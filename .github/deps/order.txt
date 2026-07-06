@@ -80,3 +80,7 @@ git
 
 # ncurses+readline exist only for bash (§7.2). hg is not bundled: cut via
 # Nix patch with a sentinel error (§7.3/§7.4).
+
+# --- test-only (DESIGN §10; linked into test executables, never shipped) ---
+gtest
+rapidcheck
