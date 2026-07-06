@@ -38,5 +38,15 @@ aws-c-cal
 ngtcp2
 boost
 
-# tier 1: gettext, libedit, libssh2, libxml2 not built — curl-slicing cuts
-# (DESIGN.md §6.3).
+libxml2
+
+# tier 1: gettext, libedit, libssh2 not built — curl-slicing cuts
+# (DESIGN.md §6.3). libxml2 is NOT a cut: libarchive needs it (xar).
+
+# --- tier 2 ---
+libidn2
+aws-c-io
+libgit2
+libarchive
+
+# tier 2: krb5, libxslt not built — curl-slicing cuts (DESIGN.md §6.3).
