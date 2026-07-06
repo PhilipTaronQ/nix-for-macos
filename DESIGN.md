@@ -184,11 +184,19 @@ shelling out but to *our* absolute path. No Nix transport rewrite. This resolves
   openssl-for-hash, **no Apple CommonCrypto**). **Net new libraries: ~0.**
 - **Shared, sliced curl** serves both Nix and git (git-https = curl remote-https).
   git-ssh uses the **`ssh` binary**, not curl/libgit2 — hence libssh2 is unused.
-- **#1 env isolation (OPEN):** Nix runs `git fetch`/`verify-commit` with the
-  **ambient env unscrubbed** — git reads user/global/system config, credential
-  helpers, ssh/gpg agents. (Code is aware: sets `GIT_ATTR_CHECK_NO_SYSTEM` on the
-  libgit2 attr path; `TODO` about global/system gitattributes.) Decide: match
-  upstream (inherit) vs isolate (`GIT_CONFIG_NOSYSTEM=1`, controlled `HOME`).
+- **#1 env isolation — RESOLVED: inherit (match upstream).** Two contexts, and
+  only one touches our git: `nix-fetchers` is linked by `libexpr`/`libflake` only
+  (**not** `libstore`/`nix-daemon`), so native git fetch runs **client-side as the
+  user**; the daemon never runs it. (The daemon's only git is a nixpkgs `fetchgit`
+  FOD built under `_nixbld` with a hermetic **store git** in a scrubbed sandbox —
+  not our git, already isolated.) For the client/user path we **inherit the env**:
+  (1) private `git+ssh`/`git+https` inputs need the user's ssh keys/agent/`insteadOf`
+  — scrubbing would break them; (2) our git is built **`NO_GETTEXT`** ⇒ always-English
+  output ⇒ parsing is locale-immune (no `LC_ALL=C` needed); (3) the one footgun is
+  already handled upstream (`GIT_ATTR_CHECK_NO_SYSTEM`). **Consequence:** we inherit
+  user config but don't bundle `git-credential-osxkeychain`, so keychain-based git
+  creds fall back to netrc/prompt — documented, acceptable (netrc is the supported
+  path).
 - **#2 keychain (DECIDED):** do **not** bundle `git-credential-osxkeychain` →
   no Keychain integration, netrc-based (as Nix already uses). Minimal macOS
   integration by design.
