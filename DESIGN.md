@@ -409,7 +409,7 @@ scripts.
 | actions/checkout | v7.0.0 | `9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0` |
 | actions/upload-artifact | v7.0.1 | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` |
 | cachix/install-nix-action | v31.10.6 | `8aa03977d8d733052d78f4e008a241fd1dbf36b3` |
-| tailscale/github-action | v4.1.3 | `780049a30b6ff5c378a9e7b389d15ece7a204888` |
+| tailscale/github-action | main (post-v4.1.3; v4.1.3 lacks `log-mode`) | `508737e1960abaf049b2ca9e6519b8b4291dbf2d` |
 
 ### 9.5 Interactive debug sessions (`debug-session.yml`)
 
