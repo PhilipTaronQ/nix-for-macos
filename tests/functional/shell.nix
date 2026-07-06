@@ -33,6 +33,17 @@ let
         export PATH=$PATH:$pkg/bin
       done
 
+      # mimic behavior of stdenv for `$out` etc. for structured attrs
+      # (nixpkgs setup.sh does exactly this; removed in 664532c53, after
+      # which the structured-attrs `test -n "$out"` assertion passed only
+      # by inheriting $out from the ENCLOSING nix build in CI).
+      if [ -n "''${NIX_ATTRS_SH_FILE:-}" ]; then
+        for o in "''${!outputs[@]}"; do
+          eval "''${o}=''${outputs[$o]}"
+          export "''${o}"
+        done
+      fi
+
       declare -a arr1=(1 2 "3 4" 5)
       declare -a arr2=(x $'\n' $'x\ny')
       fun() {

@@ -30,9 +30,9 @@ done
 meson setup build --prefix="$NIX_OUT" \
       -Dprefer_static=true \
       -Ddefault_library=static \
-      "-Dcpp_link_args=-framework Network -framework Security" \
-      "-Dcpp_args=-isystem $STAGING/include" \
-      "-Dc_args=-isystem $STAGING/include" \
+      "-Dcpp_link_args=-framework Network -framework Security -mmacosx-version-min=14.0" \
+      "-Dcpp_args=-isystem $STAGING/include -mmacosx-version-min=14.0" \
+      "-Dc_args=-isystem $STAGING/include -mmacosx-version-min=14.0" \
       -Dunit-tests=true -Dfunctional-tests=true -Ddoc-gen=false -Djson-schema-checks=true \
       -Dlibstore:s3-aws-auth=enabled \
       -Dlibstore:embedded-sandbox-shell=false \
