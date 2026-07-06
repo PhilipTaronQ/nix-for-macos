@@ -372,14 +372,18 @@ all arm64):
 
 ### 9.2 Build-step representation (open, likely trivial)
 
+This is a question of **information architecture — where build knowledge is
+checked in** — not of designing a shared build framework.
+
 **Proposal:** a directory per dependency under `.github/`, each containing a
 `build.sh` executed in tier order, with any patches alongside as
 `<dep>/*.patch` (needed for static-build and pkg-config fixups — see §14).
+Each script is free to be as bespoke as its dependency demands.
 
 Open subquestions: does the tier ordering live in a derived artifact from the
 flake eval (as `bom/tiers.json` already is) or hand-authored and verified
 against it; how the staging prefix and pkg-config path are threaded between
-scripts; how much is shared boilerplate versus per-dep.
+scripts.
 
 ### 9.3 Caching (GHA cache, aggressive)
 
@@ -405,8 +409,38 @@ scripts; how much is shared boilerplate versus per-dep.
 | actions/checkout | v7.0.0 | `9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0` |
 | actions/upload-artifact | v7.0.1 | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` |
 | cachix/install-nix-action | v31.10.6 | `8aa03977d8d733052d78f4e008a241fd1dbf36b3` |
+| tailscale/github-action | v4.1.3 | `780049a30b6ff5c378a9e7b389d15ece7a204888` |
 
-### 9.5 Workflow cleanup
+### 9.5 Interactive debug sessions (`debug-session.yml`)
+
+Iterating on 42 static builds by push-and-wait would be unbearable, so a
+`workflow_dispatch` workflow turns a runner into a temporary dev box:
+
+- The runner **joins the tailnet as an ephemeral node** via
+  `tailscale/github-action`. macOS support verified in the action's source
+  (local checkout `~/Code/github.com/tailscale/github-action`): on macOS it
+  builds Tailscale from Go source (cached per version, so only the first run
+  pays), and runs `tailscaled` as root with kernel networking — a real utun
+  interface, so **inbound connections reach the host's sshd**. Auth is a
+  tagged OAuth client (`TS_OAUTH_CLIENT_ID` / `TS_OAUTH_SECRET` secrets);
+  OAuth nodes register ephemeral + preapproved, and the action's post-step
+  logs out.
+- Tailscale provides the network path only — login is macOS's **native sshd**
+  (Remote Login), authorized against the dispatching user's GitHub public
+  keys (`https://github.com/<actor>.keys`). No dependency on Tailscale SSH
+  server support on macOS.
+- The SSH hold is a **middle step, not the end of the job**: ending the
+  session (`touch /tmp/session-done`, or timeout) lets the remaining steps
+  run — artifact upload today, per-dep GHA cache saves once tier builds
+  exist. The session writes to the **same cache namespace as the real
+  pipeline** (§9.3), so interactive progress is permanent progress.
+- Setup before the hold mirrors `macos-build.yml` (checkout, demoted Nix,
+  cache restore), so the session lands paused at pipeline step 4.
+- Hosted jobs hard-stop at 6 hours: a session is a working morning, not a
+  pet. Versus a local Mac, the runner is also guaranteed free of permanently
+  installed cruft.
+
+### 9.6 Workflow cleanup
 
 `git rm` the inherited upstream workflows — they all orchestrate `nix build`,
 the opposite of our goal — plus fork-inert automation:
