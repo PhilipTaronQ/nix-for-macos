@@ -421,10 +421,12 @@ Iterating on 42 static builds by push-and-wait would be unbearable, so a
   (local checkout `~/Code/github.com/tailscale/github-action`): on macOS it
   builds Tailscale from Go source (cached per version, so only the first run
   pays), and runs `tailscaled` as root with kernel networking — a real utun
-  interface, so **inbound connections reach the host's sshd**. Auth is a
-  tagged OAuth client (`TS_OAUTH_CLIENT_ID` / `TS_OAUTH_SECRET` secrets);
-  OAuth nodes register ephemeral + preapproved, and the action's post-step
-  logs out.
+  interface, so **inbound connections reach the host's sshd**. Auth is an
+  API-minted auth key (`TS_AUTHKEY` repo secret): reusable + ephemeral +
+  preauthorized, tagged `tag:gha-debug` (tagOwner added to the tailnet
+  policy 2026-07-06). OAuth clients cannot be created via the Tailscale API,
+  and auth keys live at most 90 days — **renewal due 2026-10-04** (the mint
+  command is in the workflow header).
 - Tailscale provides the network path only — login is macOS's **native sshd**
   (Remote Login), authorized against the dispatching user's GitHub public
   keys (`https://github.com/<actor>.keys`). No dependency on Tailscale SSH

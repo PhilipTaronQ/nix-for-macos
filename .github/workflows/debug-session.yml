@@ -6,14 +6,19 @@ name: debug-session
 # AFTER the hold still run when the session ends, which is where per-dep GHA
 # cache saves will land — interactive progress becomes permanent progress.
 #
-# One-time setup:
-#   1. Tailscale admin console → tag your ACLs: add a `tag:gha-debug` under
-#      tagOwners, and an ACL rule allowing your devices → tag:gha-debug:22.
-#   2. Admin console → Settings → OAuth clients → new client with the
-#      writable `auth_keys` scope, tagged tag:gha-debug.
-#   3. Repo → Settings → Secrets and variables → Actions:
-#      secrets TS_OAUTH_CLIENT_ID and TS_OAUTH_SECRET from that client.
-#   4. Your SSH public keys must be visible at https://github.com/<you>.keys —
+# Setup (done 2026-07-06 via the Tailscale API; recorded for renewal):
+#   1. Tailnet policy: `tag:gha-debug` under tagOwners (owner autogroup:admin).
+#      The default allow-all ACL already permits reaching the node on :22.
+#   2. Repo secret TS_AUTHKEY: a reusable + ephemeral + preauthorized auth key
+#      tagged tag:gha-debug. Max key lifetime is 90 days — when it expires,
+#      mint a new one (OAuth clients cannot be created via API):
+#        curl -u "$TS_API_KEY:" -H 'Content-Type: application/json' \
+#          -d '{"capabilities":{"devices":{"create":{"reusable":true,
+#               "ephemeral":true,"preauthorized":true,"tags":["tag:gha-debug"]}}},
+#               "expirySeconds":7776000,"description":"gha-debug-session nix-for-macos"}' \
+#          https://api.tailscale.com/api/v2/tailnet/-/keys \
+#        | jq -r .key | gh secret set TS_AUTHKEY -R PhilipTaronQ/nix-for-macos
+#   3. Your SSH public keys must be visible at https://github.com/<you>.keys —
 #      the dispatching actor's keys are what get authorized on the runner.
 #
 # Usage (workflow must be on the default branch to be dispatchable):
@@ -51,14 +56,13 @@ jobs:
         uses: cachix/install-nix-action@8aa03977d8d733052d78f4e008a241fd1dbf36b3 # v31.10.6
 
       # Tailscale provides the network path only; login is macOS's native sshd
-      # below — no reliance on Tailscale SSH server support on macOS. The node
-      # is ephemeral + preapproved, and the action's post-step logs it out.
+      # below — no reliance on Tailscale SSH server support on macOS. The key
+      # itself is tagged + ephemeral + preauthorized, and the action's
+      # post-step logs the node out.
       - name: Join tailnet (ephemeral node)
         uses: tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888 # v4.1.3
         with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:gha-debug
+          authkey: ${{ secrets.TS_AUTHKEY }}
           hostname: gha-debug-${{ github.run_id }}
 
       - name: Enable sshd, authorize dispatcher's GitHub keys
