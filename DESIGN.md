@@ -72,7 +72,7 @@ test in §10 exists to measure them.
 | Target arch | **arm64-only** (aarch64-darwin). x86_64-darwin dropped. |
 | Deployment target | `MACOSX_DEPLOYMENT_TARGET=14.0` (widest base; bump to 15 when macOS 27 is widely deployed, ~Jan) |
 | Compiler / stdlib | Apple clang from Xcode + system `libc++.1.dylib` |
-| Allowed dynamic links | Only `libSystem`, `libc++`, `/usr/lib/libiconv.dylib` (§6.5), and `/System/**/Frameworks/*`. Everything else static. |
+| Allowed dynamic links | Only `libSystem`, `libc++`, `/usr/lib/libiconv.dylib` + `/usr/lib/libcharset.1.dylib` (§6.5), and `/System/**/Frameworks/*`. Everything else static. |
 | Demoted Nix | Installed via `cachix/install-nix-action`; used only as source/version oracle |
 | Dependency versions | From the pinned nixpkgs, evaluated for `aarch64-darwin` |
 | Dependency build options | Sliced to Nix's actual usage where provably safe (§3 refinement) |
@@ -152,7 +152,12 @@ baseline, and we replicate them:
 - **curl:** `http3Support` on (so ngtcp2 and nghttp3 stay), plus
   zstd/brotli/zlib; everything else at nixpkgs defaults.
 - **boehmgc:** largeConfig + the mark-stack cflag.
-- **libgit2:** bumped to 1.9.4.
+- **libgit2:** bumped to 1.9.4 (exact tag + hash; sourced via a per-dep
+  fetch override, §9.2 — raw `nixpkgs#libgit2` would give 1.9.3).
+- **sqlite:** nixpkgs sets ~20 `SQLITE_ENABLE_*` feature defines via CFLAGS
+  (FTS5, JSON1, RTREE, `MAX_VARIABLE_NUMBER=250000`, …). These are
+  behavior-critical to Nix's database and are mirrored verbatim (oracle:
+  `nix eval …#sqlite.env.NIX_CFLAGS_COMPILE`).
 
 ### 6.3 Our slicing: the curl audit (complete)
 
@@ -181,6 +186,13 @@ PSL generators — dead code to Nix), `krb5 → libedit → ncurses`, `c-ares`, 
 Implementation: curl `--without-libpsl --without-gssapi --without-libssh2`;
 nghttp2 built library-only (no apps); libgit2 `-DUSE_SSH=OFF`.
 
+Two clarifications from building the cuts: **libxml2 is not part of the
+cut** — libxslt goes, but libarchive independently needs libxml2 (xar
+support), so it stays in the 42. And the HTTP/3 keep is **de-risked**:
+`libngtcp2_crypto_ossl.a` builds and links against the pinned openssl 3.6.2
+(the openssl-QUIC TLS API), which was the least-traveled corner of the
+whole stack.
+
 These cuts are deliberate divergences below upstream's curl config, so they are
 validated by the behavior-diff gate in §10.
 
@@ -199,6 +211,11 @@ each later tier depends only on earlier ones. The resolved graph
 
 After the dependency tiers: each Nix component (libutil, libstore, libexpr,
 libfetchers, …), then the `nix` binaries themselves.
+
+**Status (2026-07-06): tiers 0–2 are built** — 34 of the 42 BOM entries,
+zero patches (`.github/deps/`, §9.2). Remaining: curl and the upper AWS
+chain (aws-c-http, -event-stream, -auth, -mqtt, -s3, aws-crt-cpp), tiers
+3–6.
 
 ### 6.5 libiconv — use the system dylib (decided)
 
@@ -242,6 +259,9 @@ allowlist grows by this one entry.
   receiving Apple's fixes). **Escape hatch** if a real encoding bug bites:
   statically build GNU 1.19 for the affected consumer — the same move CRAN
   made with its static libiconv-64.
+- **Companion library:** libarchive's iconv detection also emits
+  `-lcharset`. `/usr/lib/libcharset.1.dylib` ships from the same Apple
+  libiconv project and is allowlisted alongside (§4).
 
 **This closes tier 0:** 18 of its 21 BOM entries are built
 (`.github/deps/`), both libiconv entries resolve to the system dylib, and
@@ -418,20 +438,42 @@ all arm64):
    test suite (§10).
 8. Package into the `.pkg`; upload-artifact.
 
-### 9.2 Build-step representation (open, likely trivial)
+### 9.2 Build-step representation (settled — as built, tiers 0–2)
 
-This is a question of **information architecture — where build knowledge is
-checked in** — not of designing a shared build framework.
+Build knowledge is checked in under `.github/deps/` — information
+architecture, not a shared framework; each script is as bespoke as its
+dependency demands.
 
-**Proposal:** a directory per dependency under `.github/`, each containing a
-`build.sh` executed in tier order, with any patches alongside as
-`<dep>/*.patch` (needed for static-build and pkg-config fixups — see §14).
-Each script is free to be as bespoke as its dependency demands.
+- **`<dep>/build.sh`** — run from the unpacked source root with `$STAGING`
+  set. Comments record upstream's flags — read from the oracle
+  (`nix eval …#<attr>.configureFlags` / `.cmakeFlags` /
+  `.env.NIX_CFLAGS_COMPILE`) — and every deliberate divergence.
+- **`fetch.sh <attr> <dest>`** — pin read from `flake.lock`; normalizes the
+  two source shapes (tarball vs `fetchFromGitHub` directory).
+- **`<dep>/fetch.sh`** (optional override) — for flake-overridden deps:
+  libgit2 pins tag+hash in lockstep with `packaging/dependencies.nix`.
+- **`dep.sh <name>`** — fetch-or-build with a version stamp under
+  `staging/.built/`; also confines `PKG_CONFIG_LIBDIR` to staging, so
+  ambient Homebrew trees on the runner can never leak into feature
+  detection.
+- **`build-all.sh` + `order.txt`** — tier order, hand-authored and verified
+  against the flake-derived `bom/tiers.json`; not-built-by-design entries
+  (cuts, libiconv) are recorded as comments where a build would otherwise
+  be missed.
+- **Build tools come from the demoted Nix**: cmake/meson/ninja/pkg-config,
+  plus autoconf/automake/libtool/m4 for git-snapshot sources needing
+  autoreconf (with `ACLOCAL_PATH` wired to libtool's m4 dir — the
+  autoreconfHook plumbing), and bmake (lowdown).
+- **Known divergence:** libxml2 and libarchive build via cmake with
+  upstream's feature flags mirrored — their git-snapshot trees don't
+  survive a fresh autoreconf under the nix-shell toolchain. Features, not
+  build system, are the fidelity surface.
+- **Patches** (`<dep>/*.patch`) remain the escape hatch; none have been
+  needed through tier 2 (34 libraries).
 
-Open subquestions: does the tier ordering live in a derived artifact from the
-flake eval (as `bom/tiers.json` already is) or hand-authored and verified
-against it; how the staging prefix and pkg-config path are threaded between
-scripts.
+The original proposal's subquestions are all settled: ordering lives in
+`order.txt` (verified against the eval), the staging prefix threads through
+the `STAGING` env var, and there is no shared boilerplate.
 
 ### 9.3 Caching (GHA cache, aggressive)
 
@@ -563,24 +605,21 @@ Every item above still needs its own detailed breakdown.
 - **Static libc++.** We deliberately use the *system* libc++ (dynamic, always
   present, no store path). Watch for any dependency that insists on a static
   C++ runtime.
-- **boost static on arm64-darwin.** The context/coroutine assembly is the risk
-  point — verify the compiled boost libs build cleanly.
-- **aws-crt-cpp is the largest extra build surface** (13 libs including
-  s2n-tls). Keep unless it proves genuinely intractable.
+- **aws-crt-cpp** is the largest single remaining build (tier 6, C++). The
+  chain below it is de-risked — 7 of the 13 AWS libs already build cleanly
+  through aws-c-io — so the residual risk is crt-cpp itself.
 - **ssh sub-execs.** ssh may invoke `ssh-askpass` / `ProxyCommand` depending on
   user environment — audit before finalizing the ssh bundling (§7.2).
-- **libarchive + brotli.** Statically linking brotli's three libs
-  (`libbrotlicommon`/`dec`/`enc`) and getting libarchive to detect them is
-  historically finicky. Budget for a patch.
-- **Static builds are inconsistently supported across the ecosystem.** Expect
-  to patch `.pc` (pkg-config) files and build scripts. Patches ship as
-  `.github/<dep>/*.patch` next to each `build.sh` (§9.2).
+- **Static-build patching has proven far tamer than budgeted:** 34 libraries
+  through tier 2 with zero patches. `.pc` fixups may still surface at the
+  final link (Libs.private chains are only exercised then); patches ship as
+  `.github/deps/<dep>/*.patch` if needed (§9.2).
 - **`mimalloc`.** Confirm it is genuinely unused on darwin (the flake closure
   says so) and that we are not silently dropping upstream's allocator choice.
-- **Build-step representation** — settle the `.github/<dep>/build.sh` proposal
-  (§9.2).
 - **Cache correctness.** Verify the flake-sourced `.drv`-hash + global-salt
-  scheme invalidates on exactly the right changes and nothing more.
+  scheme invalidates on exactly the right changes and nothing more. (The
+  debug-session staging cache, §9.5, deliberately uses looser version stamps
+  — the `.drv` scheme is for `macos-build.yml`.)
 - **Notarization** — deferred until a Developer ID cert exists.
 
 ## Appendix: local source checkouts
