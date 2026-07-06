@@ -38,6 +38,10 @@ on:
         description: Install the demoted Nix (source oracle) before the hold
         type: boolean
         default: true
+      auto-build:
+        description: Run .github/deps/build-all.sh (fetch-or-build) before the hold
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -54,6 +58,28 @@ jobs:
       - name: Install demoted Nix (source oracle)
         if: ${{ inputs.install-nix }}
         uses: cachix/install-nix-action@8aa03977d8d733052d78f4e008a241fd1dbf36b3 # v31.10.6
+
+      # Dev-loop cache: one entry holding the whole staging prefix. The key is
+      # unique per run so a save always happens; restore-keys pulls the most
+      # recent prior session's staging. Per-dep skip logic lives in dep.sh
+      # (version stamps); exact .drv-keyed caching belongs to macos-build.yml.
+      - name: Restore staging cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: staging
+          key: staging-v1-${{ github.run_id }}
+          restore-keys: staging-v1-
+
+      # Fetch-or-build anything order.txt lists that the restored staging
+      # lacks. continue-on-error: a broken build.sh must not kill the session
+      # — debugging it is what the session is for.
+      - name: Fetch-or-build deps
+        if: ${{ inputs.install-nix && inputs.auto-build }}
+        continue-on-error: true
+        run: |
+          export PATH=/nix/var/nix/profiles/default/bin:$PATH
+          export STAGING=$PWD/staging
+          bash .github/deps/build-all.sh
 
       # Tailscale provides the network path only; login is macOS's native sshd
       # below — no reliance on Tailscale SSH server support on macOS. The key
@@ -104,8 +130,13 @@ jobs:
           echo "session ended after $(( SECONDS / 60 )) minutes"
 
       # ---- post-hold: everything below runs after the session ends ----
-      # Per-dep GHA cache saves (keyed per bom/tiers.json + salt, DESIGN §9.3)
-      # go here once tier builds exist. Until then, preserve any staged work.
+
+      - name: Save staging cache
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: staging
+          key: staging-v1-${{ github.run_id }}
 
       - name: Pack staging prefix (if any)
         if: always()
