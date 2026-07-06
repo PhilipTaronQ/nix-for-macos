@@ -623,6 +623,16 @@ Every item above still needs its own detailed breakdown.
   debug-session staging cache, §9.5, deliberately uses looser version stamps
   — the `.drv` scheme is for `macos-build.yml`.)
 - **Notarization** — deferred until a Developer ID cert exists.
+- **PGO / LTO exploration (flagged 2026-07-06).** The evaluator is the hot
+  path and we control the whole toolchain, so profile-guided optimization
+  is feasible: instrument (`-fprofile-instr-generate`), train on real
+  workloads (`nix eval` over nixpkgs, the functional suite), merge with
+  `llvm-profdata`, rebuild (`-fprofile-instr-use`). Thin LTO
+  (`-Db_lto=true`) is the cheaper first step and likely most of the win.
+  Both are perf-only divergences from upstream (which ships neither) —
+  behaviorally inert, but the behavior-diff gate (§10) should still cover
+  them. CI cost: roughly one extra nix rebuild per release. Do after the
+  installer ships.
 
 ## Appendix: local source checkouts
 
