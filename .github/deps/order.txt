@@ -69,3 +69,14 @@ aws-c-s3
 aws-crt-cpp
 
 # BOM COMPLETE: 41 built + libiconv (system dylib) = 42/42 (DESIGN.md §6).
+
+# --- helper executables (DESIGN §7) ---
+ncurses
+readline
+bashInteractive
+lsof
+openssh
+git
+
+# ncurses+readline exist only for bash (§7.2). hg is not bundled: cut via
+# Nix patch with a sentinel error (§7.3/§7.4).
