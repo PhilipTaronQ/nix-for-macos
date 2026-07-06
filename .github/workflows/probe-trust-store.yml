@@ -1,0 +1,53 @@
+name: probe-trust-store
+
+# Empirical probe (workflow_dispatch only) to settle the openssl/macOS trust-store
+# design: is /etc/ssl/cert.pem present, complete, and does an openssl-family client
+# validate real TLS against it, across our deployment-target range (macOS 14/15/26)?
+
+on:
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-14, macos-15, macos-26]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Trust store probe
+        run: |
+          echo "===== OS / arch ====="
+          sw_vers; uname -m
+
+          echo "===== /etc/ssl/cert.pem ====="
+          if [ -f /etc/ssl/cert.pem ]; then
+            ls -l /etc/ssl/cert.pem
+            echo "file cert count: $(grep -c 'BEGIN CERTIFICATE' /etc/ssl/cert.pem)"
+          else
+            echo "ABSENT"
+          fi
+          echo "----- /etc/ssl listing -----"; ls -la /etc/ssl/ 2>&1 || echo "no /etc/ssl"
+
+          echo "===== keychain system roots ====="
+          security find-certificate -a -p \
+            /System/Library/Keychains/SystemRootCertificates.keychain 2>/dev/null \
+            | grep -c 'BEGIN CERTIFICATE' || echo "keychain read failed"
+
+          echo "===== openssl-family validation via /etc/ssl/cert.pem (the key test) ====="
+          echo | /usr/bin/openssl s_client -connect cache.nixos.org:443 \
+            -CAfile /etc/ssl/cert.pem -verify_return_error 2>&1 \
+            | grep -iE 'Verify return code|verify error' || echo "s_client (CAfile) produced no verify line"
+
+          echo "===== openssl default (compiled OPENSSLDIR) ====="
+          /usr/bin/openssl version -a 2>&1 | sed -n '1p; /OPENSSLDIR/p'
+          echo | /usr/bin/openssl s_client -connect cache.nixos.org:443 2>&1 \
+            | grep -iE 'Verify return code|verify error' || echo "s_client (default) produced no verify line"
+
+          echo "===== curl (secondary; system curl backend may differ) ====="
+          curl -sS --cacert /etc/ssl/cert.pem https://cache.nixos.org/nix-cache-info >/dev/null \
+            && echo "CURL --cacert /etc/ssl/cert.pem: OK" || echo "CURL --cacert: FAIL"
+          curl -sS https://cache.nixos.org/nix-cache-info >/dev/null \
+            && echo "CURL default: OK" || echo "CURL default: FAIL"
