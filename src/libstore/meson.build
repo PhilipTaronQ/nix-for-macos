@@ -98,8 +98,15 @@ configdata_pub.set(
 )
 
 if host_machine.system() == 'darwin'
-  sandbox = cxx.find_library('sandbox')
-  deps_other += [ sandbox ]
+  # sandbox_init* is exported by libSystem itself on all supported macOS.
+  # libsandbox ships only as a system dylib (SDK .tbd; no static variant),
+  # so treat it as optional: link it where findable, and rely on libSystem
+  # where the toolchain cannot see it (e.g. bare Apple clang, whose
+  # -print-search-dirs does not reveal the SDK to meson).
+  sandbox = cxx.find_library('sandbox', required : false, static : false)
+  if sandbox.found()
+    deps_other += [ sandbox ]
+  endif
 endif
 
 if host_machine.system() == 'windows'
