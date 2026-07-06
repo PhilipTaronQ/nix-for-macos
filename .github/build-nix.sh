@@ -28,6 +28,7 @@ for t in meson ninja cmake pkg-config bison flex jv; do
   command -v "$t" >/dev/null || { echo "missing build tool: $t (see debug-session.yml build-tools step)" >&2; exit 1; }
 done
 meson setup build --prefix="$NIX_OUT" \
+  -Dbuildtype=release -Dstrip=true \
       -Dprefer_static=true \
       -Ddefault_library=static \
       "-Dcpp_link_args=-framework Network -framework Security -mmacosx-version-min=14.0" \
