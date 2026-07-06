@@ -431,6 +431,13 @@ Iterating on 42 static builds by push-and-wait would be unbearable, so a
   (Remote Login), authorized against the dispatching user's GitHub public
   keys (`https://github.com/<actor>.keys`). No dependency on Tailscale SSH
   server support on macOS.
+- **Containment + log hygiene:** the tailnet ACL's only rule is
+  `src: autogroup:member → *:*`, so tagged runner nodes can be *reached* but
+  cannot initiate anything into the tailnet — which also caps the blast
+  radius of a leaked `TS_AUTHKEY` at "an inert, reachable node." Run logs
+  are public: the action runs `log-mode: quiet` (its normal output prints
+  the tailnet's MagicDNS name), and the session-info step prints only the
+  deterministic hostname, never the tailscale IP.
 - The SSH hold is a **middle step, not the end of the job**: ending the
   session (`touch /tmp/session-done`, or timeout) lets the remaining steps
   run — artifact upload today, per-dep GHA cache saves once tier builds

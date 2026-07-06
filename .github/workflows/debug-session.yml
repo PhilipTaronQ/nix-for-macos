@@ -64,6 +64,9 @@ jobs:
         with:
           authkey: ${{ secrets.TS_AUTHKEY }}
           hostname: gha-debug-${{ github.run_id }}
+          # Run logs are public: quiet suppresses the action's informational
+          # output, which otherwise prints the tailnet's MagicDNS name.
+          log-mode: quiet
 
       - name: Enable sshd, authorize dispatcher's GitHub keys
         run: |
@@ -77,12 +80,12 @@ jobs:
           sudo systemsetup -setremotelogin on \
             || sudo launchctl load -w /System/Library/LaunchDaemons/ssh.plist
 
+      # Public logs: print only the MagicDNS hostname (deterministic, no
+      # tailnet suffix) — never the tailscale IP.
       - name: Session info
         run: |
-          IP="$(tailscale ip -4 2>/dev/null || sudo tailscale ip -4)"
           echo "===== SSH session ready ====="
-          echo "  ssh runner@${IP}"
-          echo "  (MagicDNS: ssh runner@gha-debug-${{ github.run_id }})"
+          echo "  ssh runner@gha-debug-${{ github.run_id }}"
           echo "workspace: $GITHUB_WORKSPACE"
           echo "end session: touch /tmp/session-done   (or wait for timeout)"
 
