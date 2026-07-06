@@ -59,6 +59,37 @@ jobs:
         if: ${{ inputs.install-nix }}
         uses: cachix/install-nix-action@8aa03977d8d733052d78f4e008a241fd1dbf36b3 # v31.10.6
 
+      # All build tools in ONE stanza, installed into the default profile —
+      # available to the fetch-or-build step, build-nix.sh, and SSH sessions
+      # alike. Per-script nix-shell wrappers are gone; scripts assume PATH.
+      - name: Install build tools (nix profile)
+        if: ${{ inputs.install-nix }}
+        run: |
+          PIN=$(jq -r .nodes.nixpkgs.locked.rev flake.lock)
+          nix --extra-experimental-features "nix-command flakes" profile add \
+            "github:NixOS/nixpkgs/$PIN#meson" \
+            "github:NixOS/nixpkgs/$PIN#ninja" \
+            "github:NixOS/nixpkgs/$PIN#cmake" \
+            "github:NixOS/nixpkgs/$PIN#pkg-config" \
+            "github:NixOS/nixpkgs/$PIN#bison" \
+            "github:NixOS/nixpkgs/$PIN#flex" \
+            "github:NixOS/nixpkgs/$PIN#autoconf" \
+            "github:NixOS/nixpkgs/$PIN#automake" \
+            "github:NixOS/nixpkgs/$PIN#libtool" \
+            "github:NixOS/nixpkgs/$PIN#m4" \
+            "github:NixOS/nixpkgs/$PIN#bmake" \
+            "github:NixOS/nixpkgs/$PIN#jsonschema" \
+            "github:NixOS/nixpkgs/$PIN#coreutils" \
+            "github:NixOS/nixpkgs/$PIN#gnused" \
+            "github:NixOS/nixpkgs/$PIN#gnugrep" \
+            "github:NixOS/nixpkgs/$PIN#gawk" \
+            "github:NixOS/nixpkgs/$PIN#findutils" \
+            "github:NixOS/nixpkgs/$PIN#diffutils" \
+            "github:NixOS/nixpkgs/$PIN#gnutar" \
+            "github:NixOS/nixpkgs/$PIN#jq"
+          echo "$HOME/.nix-profile/bin" >> "$GITHUB_PATH"
+          echo "ACLOCAL_PATH=$HOME/.nix-profile/share/aclocal" >> "$GITHUB_ENV"
+
       # Dev-loop cache: one entry holding the whole staging prefix. The key is
       # unique per run so a save always happens; restore-keys pulls the most
       # recent prior session's staging. Per-dep skip logic lives in dep.sh

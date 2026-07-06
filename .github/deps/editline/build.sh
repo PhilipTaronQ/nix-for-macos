@@ -1,19 +1,12 @@
 #!/usr/bin/env bash
-# editline, static, autotools. STAGING set. Git-snapshot source: autoreconf
-# via the demoted Nix with libtool m4 wiring (same pattern as boehmgc).
+# editline, static, autotools. STAGING set. Git-snapshot source.
 set -euo pipefail
 if [ ! -x ./configure ]; then
-    repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd)
-    pin=$(jq -r ".nodes.nixpkgs.locked.rev" "$repo_root/flake.lock")
-    nix --extra-experimental-features "nix-command flakes" shell \
-        "github:NixOS/nixpkgs/$pin#autoconf" \
-        "github:NixOS/nixpkgs/$pin#automake" \
-        "github:NixOS/nixpkgs/$pin#libtool" \
-        --command bash -c '
-            lt_prefix=$(dirname "$(dirname "$(command -v libtoolize)")")
-            export ACLOCAL_PATH="$lt_prefix/share/aclocal"
-            autoreconf -fiv
-        '
+    # autotools come from the nix profile (debug-session.yml installs the
+    # consolidated build-tool stanza); its share/aclocal merges libtool m4.
+    export PATH="$HOME/.nix-profile/bin:$PATH"
+    export ACLOCAL_PATH="${ACLOCAL_PATH:-$HOME/.nix-profile/share/aclocal}"
+    autoreconf -fiv
 fi
 ./configure --prefix="$STAGING" --disable-shared --enable-static
 make -j"$(sysctl -n hw.ncpu)"
