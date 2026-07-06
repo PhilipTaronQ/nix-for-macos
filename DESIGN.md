@@ -72,7 +72,7 @@ test in §10 exists to measure them.
 | Target arch | **arm64-only** (aarch64-darwin). x86_64-darwin dropped. |
 | Deployment target | `MACOSX_DEPLOYMENT_TARGET=14.0` (widest base; bump to 15 when macOS 27 is widely deployed, ~Jan) |
 | Compiler / stdlib | Apple clang from Xcode + system `libc++.1.dylib` |
-| Allowed dynamic links | Only `libSystem`, `libc++`, and `/System/**/Frameworks/*` — exactly what upstream also gets from the SDK. Everything else static. |
+| Allowed dynamic links | Only `libSystem`, `libc++`, `/usr/lib/libiconv.dylib` (§6.5), and `/System/**/Frameworks/*`. Everything else static. |
 | Demoted Nix | Installed via `cachix/install-nix-action`; used only as source/version oracle |
 | Dependency versions | From the pinned nixpkgs, evaluated for `aarch64-darwin` |
 | Dependency build options | Sliced to Nix's actual usage where provably safe (§3 refinement) |
@@ -82,6 +82,7 @@ test in §10 exists to measure them.
 | `libcpuid` | **Dropped** — x86-only, unused on Apple Silicon (zero divergence) |
 | `libcurl` | **Built from nixpkgs source** — meson requires curl ≥ 8.17.0 and every macOS system curl is older. OpenSSL TLS backend. |
 | TLS trust store | openssl built with `OPENSSLDIR=/etc/ssl`, using Apple's OS-maintained `/etc/ssl/cert.pem`; no bundled cacert (§8) |
+| `libiconv` | **System dylib** (`/usr/lib/libiconv.dylib`) — neither BOM copy is built (§6.5) |
 | Components shipped | Full default install: `nix` + legacy `nix-*` + `nix-daemon` + man pages |
 | Config deviation | `experimental-features = nix-command flakes` on by default (via install-time conf, §11) |
 | Bundled executables | `git`, `ssh`, `lsof`, `bash` bundled; `hg` cut with a sentinel error (§7) |
@@ -198,6 +199,53 @@ each later tier depends only on earlier ones. The resolved graph
 
 After the dependency tiers: each Nix component (libutil, libstore, libexpr,
 libfetchers, …), then the `nix` binaries themselves.
+
+### 6.5 libiconv — use the system dylib (decided)
+
+Nix itself contains no iconv call sites; iconv is purely transitive. The
+BOM's two libiconv entries resolve as follows: **Apple's libiconv 113** is
+what `pkgs.libiconv` *means* on aarch64-darwin at the pin (built from
+`apple-oss-distributions/libiconv`), and **GNU 1.19** (`libiconvReal`)
+enters through exactly one edge — libunistring's propagated dependency
+(libunistring survives the §6.3 cuts because libidn2 keeps it).
+
+**Decision: link `/usr/lib/libiconv.dylib`; build neither copy.** The §4
+allowlist grows by this one entry.
+
+- **Consumers after slicing:** libidn2/libunistring (non-ASCII hostnames →
+  punycode); the bundled git (`compat/precompose_utf8.c` — darwin filename
+  NFC/NFD handling, genuinely load-bearing on macOS — plus commit
+  re-encoding and `working-tree-encoding`); libgit2 (darwin `USE_ICONV`,
+  same precompose concern); boost (vestigial — iconv serves Boost.Locale,
+  which is not among our five sliced boost libs).
+- **The known complaints target the implementation, not the linking mode.**
+  Since macOS 14, Apple's libiconv is a Citrus/FreeBSD reimplementation that
+  reports itself as "GNU libiconv 1.11". Documented bugs (R project blog,
+  2024-12): silent transliteration of non-representable characters, BOM
+  state lost across resets/incomplete sequences (breaks iterative UTF-16/32
+  decoding), and an EILSEQ-cascade crash. But **the pinned nixpkgs
+  `libiconv-113` is this same Citrus code** — avoiding the system dylib does
+  not avoid the bugs; only a GNU-everywhere divergence would, and that
+  breaks fidelity to upstream's own darwin choice.
+- **Exposure:** the bugs live in streaming/stateful corners. Nix's iconv
+  surface is short, stateless, whole-buffer hostname/filename conversions.
+  git's `working-tree-encoding=UTF-16` is the one path nearby — and Apple's
+  own git links the same system iconv, so the bundled git has exact platform
+  parity.
+- **ABI:** `libiconv.2.dylib` has kept its install name for ~20 years, lives
+  in the dyld shared cache, and every SDK ships its `.tbd`. The GNU-header
+  symbol trap (GNU's `iconv.h` rewrites `iconv_open` → `libiconv_open`;
+  MacPorts #57821) cannot occur here: staging contains no GNU iconv, so
+  everything compiles against the SDK's `iconv.h`.
+- **Accepted divergences:** libunistring's GNU-1.19 edge becomes
+  Apple-Citrus, and the version drifts with the OS (which mostly means
+  receiving Apple's fixes). **Escape hatch** if a real encoding bug bites:
+  statically build GNU 1.19 for the affected consumer — the same move CRAN
+  made with its static libiconv-64.
+
+**This closes tier 0:** 18 of its 21 BOM entries are built
+(`.github/deps/`), both libiconv entries resolve to the system dylib, and
+c-ares, ncurses, and publicsuffix-list are §6.3 cuts.
 
 ## 7. Bundled executables (runtime shell-outs)
 
