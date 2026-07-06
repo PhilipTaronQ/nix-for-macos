@@ -72,7 +72,7 @@ test in §10 exists to measure them.
 | Target arch | **arm64-only** (aarch64-darwin). x86_64-darwin dropped. |
 | Deployment target | `MACOSX_DEPLOYMENT_TARGET=14.0` (widest base; bump to 15 when macOS 27 is widely deployed, ~Jan) |
 | Compiler / stdlib | Apple clang from Xcode + system `libc++.1.dylib` |
-| Allowed dynamic links | Only `libSystem`, `libc++`, `/usr/lib/libiconv.dylib` + `/usr/lib/libcharset.1.dylib` (§6.5), and `/System/**/Frameworks/*`. Everything else static. |
+| Allowed dynamic links | Only `libSystem`, `libc++`, `/usr/lib/libiconv.dylib` + `/usr/lib/libcharset.1.dylib` (§6.5), `/usr/lib/libresolv.9.dylib` (ssh only, §7.2), and `/System/**/Frameworks/*`. Everything else static. |
 | Demoted Nix | Installed via `cachix/install-nix-action`; used only as source/version oracle |
 | Dependency versions | From the pinned nixpkgs, evaluated for `aarch64-darwin` |
 | Dependency build options | Sliced to Nix's actual usage where provably safe (§3 refinement) |
@@ -360,6 +360,8 @@ link dependencies after slicing, (3) what *it* shells out to.
   PATH → patched to our absolute path. We slice openssh to the client, without
   FIDO2 or DNSSEC. ssh itself may exec `ssh-askpass` or a `ProxyCommand`
   depending on the user's environment — **audit before finalizing** (§14).
+  As built, the ssh binary links `/usr/lib/libresolv.9.dylib` (Apple's
+  OS-stable resolver, allowlisted in §4) in addition to libSystem.
 - **lsof.** Nix runs `lsof -n -w -F n` during GC (the `_NIX_TEST_NO_LSOF`
   escape hatch exists). Patch to the absolute path now; longer-term, drop the
   exec entirely by using `libproc`.
