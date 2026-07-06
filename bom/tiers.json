@@ -1,0 +1,546 @@
+{
+  "meta": {
+    "pin": "714a5f8c4ead6b31148d829288440ed033ccc041",
+    "system": "aarch64-darwin",
+    "source": "flake nix-everything buildInputs closure (packaging/dependencies.nix overrides applied by the flake itself)",
+    "cache_key": "basename(dep.drvPath) hash part; combine with a global salt in the GHA key",
+    "compile_count": 50
+  },
+  "libraries": [
+    {
+      "name": "aws-c-common",
+      "version": "0.12.4",
+      "tier": 0,
+      "cache_key": "6n3f8h1d9vamqskaq014cm81k7qxhrxh",
+      "drv": "/nix/store/6n3f8h1d9vamqskaq014cm81k7qxhrxh-aws-c-common-0.12.4.drv",
+      "deps": []
+    },
+    {
+      "name": "boehm-gc",
+      "version": "8.2.12",
+      "tier": 0,
+      "cache_key": "2ny2bd1860j96xvpvwyxxy030smmxsd6",
+      "drv": "/nix/store/2ny2bd1860j96xvpvwyxxy030smmxsd6-boehm-gc-8.2.12.drv",
+      "deps": []
+    },
+    {
+      "name": "brotli",
+      "version": "1.2.0",
+      "tier": 0,
+      "cache_key": "fr3zyi5njhv5n17mld235hnqm9797wlz",
+      "drv": "/nix/store/fr3zyi5njhv5n17mld235hnqm9797wlz-brotli-1.2.0.drv",
+      "deps": []
+    },
+    {
+      "name": "bzip2",
+      "version": "1.0.8",
+      "tier": 0,
+      "cache_key": "jykgcmimmmsiv4rnydvfpc21g5wsxf1a",
+      "drv": "/nix/store/jykgcmimmmsiv4rnydvfpc21g5wsxf1a-bzip2-1.0.8.drv",
+      "deps": []
+    },
+    {
+      "name": "c-ares",
+      "version": "1.34.6",
+      "tier": 0,
+      "cache_key": "19yjb6vsyyw578v8yrmdn5k24nz96ivc",
+      "drv": "/nix/store/19yjb6vsyyw578v8yrmdn5k24nz96ivc-c-ares-1.34.6.drv",
+      "deps": []
+    },
+    {
+      "name": "libblake3",
+      "version": "1.8.5",
+      "tier": 0,
+      "cache_key": "wckfwd7cn706s5gp7bq726vj646la9a6",
+      "drv": "/nix/store/wckfwd7cn706s5gp7bq726vj646la9a6-libblake3-1.8.5.drv",
+      "deps": []
+    },
+    {
+      "name": "libev",
+      "version": "4.33",
+      "tier": 0,
+      "cache_key": "kjdczk2praqcsjdsqcdayn9b367k977x",
+      "drv": "/nix/store/kjdczk2praqcsjdsqcdayn9b367k977x-libev-4.33.drv",
+      "deps": []
+    },
+    {
+      "name": "libiconv",
+      "version": "113",
+      "tier": 0,
+      "cache_key": "ahlxsjbvkm7p977spw21c137vxnicxs4",
+      "drv": "/nix/store/ahlxsjbvkm7p977spw21c137vxnicxs4-libiconv-113.drv",
+      "deps": []
+    },
+    {
+      "name": "libiconv",
+      "version": "1.19",
+      "tier": 0,
+      "cache_key": "35mfcg1szm5cw3b5wpj5w81xii7s57ci",
+      "drv": "/nix/store/35mfcg1szm5cw3b5wpj5w81xii7s57ci-libiconv-1.19.drv",
+      "deps": []
+    },
+    {
+      "name": "libsodium",
+      "version": "1.0.22-unstable-2026-04-09",
+      "tier": 0,
+      "cache_key": "31g3l314bpbs0p0x4l67iglh68hprssc",
+      "drv": "/nix/store/31g3l314bpbs0p0x4l67iglh68hprssc-libsodium-1.0.22-unstable-2026-04-09.drv",
+      "deps": []
+    },
+    {
+      "name": "llhttp",
+      "version": "9.4.1",
+      "tier": 0,
+      "cache_key": "xwmd4zyj47qgavv2376kv62ni8vfz7ar",
+      "drv": "/nix/store/xwmd4zyj47qgavv2376kv62ni8vfz7ar-llhttp-9.4.1.drv",
+      "deps": []
+    },
+    {
+      "name": "lzo",
+      "version": "2.10",
+      "tier": 0,
+      "cache_key": "ish154c5bxvn59zi4chpxzxbxmmivhhd",
+      "drv": "/nix/store/ish154c5bxvn59zi4chpxzxbxmmivhhd-lzo-2.10.drv",
+      "deps": []
+    },
+    {
+      "name": "ncurses",
+      "version": "6.6",
+      "tier": 0,
+      "cache_key": "xhxvf413gkx1p38izgciv6r7i5p4qz3f",
+      "drv": "/nix/store/xhxvf413gkx1p38izgciv6r7i5p4qz3f-ncurses-6.6.drv",
+      "deps": []
+    },
+    {
+      "name": "nghttp3",
+      "version": "1.15.0",
+      "tier": 0,
+      "cache_key": "qkf0k7ab0vli9gix8cd41gp5jg0dzdms",
+      "drv": "/nix/store/qkf0k7ab0vli9gix8cd41gp5jg0dzdms-nghttp3-1.15.0.drv",
+      "deps": []
+    },
+    {
+      "name": "nlohmann_json",
+      "version": "3.12.0",
+      "tier": 0,
+      "cache_key": "5nm8smbhfxcacaizi2gb2x5yyqa9sai2",
+      "drv": "/nix/store/5nm8smbhfxcacaizi2gb2x5yyqa9sai2-nlohmann_json-3.12.0.drv",
+      "deps": []
+    },
+    {
+      "name": "openssl",
+      "version": "3.6.2",
+      "tier": 0,
+      "cache_key": "4adqlxvgn77absa1flpgp1ywgzhhr4sg",
+      "drv": "/nix/store/4adqlxvgn77absa1flpgp1ywgzhhr4sg-openssl-3.6.2.drv",
+      "deps": []
+    },
+    {
+      "name": "pcre2",
+      "version": "10.46",
+      "tier": 0,
+      "cache_key": "13cgjjfhdgcayfp4nrkr6nnp7xisjd86",
+      "drv": "/nix/store/13cgjjfhdgcayfp4nrkr6nnp7xisjd86-pcre2-10.46.drv",
+      "deps": []
+    },
+    {
+      "name": "publicsuffix-list",
+      "version": "0-unstable-2026-05-13",
+      "tier": 0,
+      "cache_key": "82kmaz01szi1g451i9z4i3m0n3fjs9yv",
+      "drv": "/nix/store/82kmaz01szi1g451i9z4i3m0n3fjs9yv-publicsuffix-list-0-unstable-2026-05-13.drv",
+      "deps": []
+    },
+    {
+      "name": "xz",
+      "version": "5.8.3",
+      "tier": 0,
+      "cache_key": "022pwzsi4gvm366qagniavdpxp3m6gsk",
+      "drv": "/nix/store/022pwzsi4gvm366qagniavdpxp3m6gsk-xz-5.8.3.drv",
+      "deps": []
+    },
+    {
+      "name": "zlib",
+      "version": "1.3.2",
+      "tier": 0,
+      "cache_key": "2zra1lhw0y6dii2pbj40d4br2c20psdy",
+      "drv": "/nix/store/2zra1lhw0y6dii2pbj40d4br2c20psdy-zlib-1.3.2.drv",
+      "deps": []
+    },
+    {
+      "name": "zstd",
+      "version": "1.5.7",
+      "tier": 0,
+      "cache_key": "2vgnz891zcxyddj4r7g4ymah6j9q4f48",
+      "drv": "/nix/store/2vgnz891zcxyddj4r7g4ymah6j9q4f48-zstd-1.5.7.drv",
+      "deps": []
+    },
+    {
+      "name": "aws-c-cal",
+      "version": "0.9.2",
+      "tier": 1,
+      "cache_key": "racj3pjl24isabzcbjb48xgbfwv6j8w8",
+      "drv": "/nix/store/racj3pjl24isabzcbjb48xgbfwv6j8w8-aws-c-cal-0.9.2.drv",
+      "deps": [
+        "aws-c-common",
+        "openssl"
+      ]
+    },
+    {
+      "name": "aws-c-compression",
+      "version": "0.3.1",
+      "tier": 1,
+      "cache_key": "m7yasrhpxdr7yig15xsi69hrvmacc61z",
+      "drv": "/nix/store/m7yasrhpxdr7yig15xsi69hrvmacc61z-aws-c-compression-0.3.1.drv",
+      "deps": [
+        "aws-c-common"
+      ]
+    },
+    {
+      "name": "aws-c-sdkutils",
+      "version": "0.2.4",
+      "tier": 1,
+      "cache_key": "d9rr14fkir8pmgiiq2hxinvhn233nwhf",
+      "drv": "/nix/store/d9rr14fkir8pmgiiq2hxinvhn233nwhf-aws-c-sdkutils-0.2.4.drv",
+      "deps": [
+        "aws-c-common"
+      ]
+    },
+    {
+      "name": "aws-checksums",
+      "version": "0.2.7",
+      "tier": 1,
+      "cache_key": "hk7654zsxzmdx53kncmiw1d372rhal4i",
+      "drv": "/nix/store/hk7654zsxzmdx53kncmiw1d372rhal4i-aws-checksums-0.2.7.drv",
+      "deps": [
+        "aws-c-common"
+      ]
+    },
+    {
+      "name": "boost",
+      "version": "1.89.0",
+      "tier": 1,
+      "cache_key": "76pgfmzdr2pwyahsycxgn4fbpc53y13z",
+      "drv": "/nix/store/76pgfmzdr2pwyahsycxgn4fbpc53y13z-boost-1.89.0.drv",
+      "deps": [
+        "bzip2",
+        "libiconv",
+        "xz",
+        "zlib",
+        "zstd"
+      ]
+    },
+    {
+      "name": "gettext",
+      "version": "1.0",
+      "tier": 1,
+      "cache_key": "nwsswz5zwrpx9c09ssh6r2pi4z3cbdym",
+      "drv": "/nix/store/nwsswz5zwrpx9c09ssh6r2pi4z3cbdym-gettext-1.0.drv",
+      "deps": [
+        "libiconv"
+      ]
+    },
+    {
+      "name": "libedit",
+      "version": "20251016-3.1",
+      "tier": 1,
+      "cache_key": "vqfx11g89lmcad7vs5qjsx34icb6fdkb",
+      "drv": "/nix/store/vqfx11g89lmcad7vs5qjsx34icb6fdkb-libedit-20251016-3.1.drv",
+      "deps": [
+        "ncurses"
+      ]
+    },
+    {
+      "name": "libssh2",
+      "version": "1.11.1",
+      "tier": 1,
+      "cache_key": "cnx56faxhixlpw3cp3wgf52c3fn726cj",
+      "drv": "/nix/store/cnx56faxhixlpw3cp3wgf52c3fn726cj-libssh2-1.11.1.drv",
+      "deps": [
+        "openssl",
+        "zlib"
+      ]
+    },
+    {
+      "name": "libunistring",
+      "version": "1.4.2",
+      "tier": 1,
+      "cache_key": "64bphqp3i79i79wj8x6p89rarksxj5v5",
+      "drv": "/nix/store/64bphqp3i79i79wj8x6p89rarksxj5v5-libunistring-1.4.2.drv",
+      "deps": [
+        "libiconv"
+      ]
+    },
+    {
+      "name": "libxml2",
+      "version": "2.15.3",
+      "tier": 1,
+      "cache_key": "hfvmj27ds6yj1hs2wh1dm819ijvk4x6g",
+      "drv": "/nix/store/hfvmj27ds6yj1hs2wh1dm819ijvk4x6g-libxml2-2.15.3.drv",
+      "deps": [
+        "libiconv"
+      ]
+    },
+    {
+      "name": "nghttp2",
+      "version": "1.69.0",
+      "tier": 1,
+      "cache_key": "l5rdjayx3m517ga2nhg96cgis6mknbcj",
+      "drv": "/nix/store/l5rdjayx3m517ga2nhg96cgis6mknbcj-nghttp2-1.69.0.drv",
+      "deps": [
+        "c-ares",
+        "libev",
+        "openssl",
+        "zlib"
+      ]
+    },
+    {
+      "name": "ngtcp2",
+      "version": "1.22.1",
+      "tier": 1,
+      "cache_key": "g3618rl0r52gngc2by2rl95sry3slsj4",
+      "drv": "/nix/store/g3618rl0r52gngc2by2rl95sry3slsj4-ngtcp2-1.22.1.drv",
+      "deps": [
+        "brotli",
+        "libev",
+        "nghttp3",
+        "openssl"
+      ]
+    },
+    {
+      "name": "s2n-tls",
+      "version": "1.7.2",
+      "tier": 1,
+      "cache_key": "fjk1kgwsm4l74i4v1iw93fnyd6cbn53w",
+      "drv": "/nix/store/fjk1kgwsm4l74i4v1iw93fnyd6cbn53w-s2n-tls-1.7.2.drv",
+      "deps": [
+        "openssl"
+      ]
+    },
+    {
+      "name": "sqlite",
+      "version": "3.51.2",
+      "tier": 1,
+      "cache_key": "a8mk5w2ydqkvxj19qhp3ccz4ilq5c341",
+      "drv": "/nix/store/a8mk5w2ydqkvxj19qhp3ccz4ilq5c341-sqlite-3.51.2.drv",
+      "deps": [
+        "zlib"
+      ]
+    },
+    {
+      "name": "toml11",
+      "version": "4.4.0",
+      "tier": 1,
+      "cache_key": "jvr3d9vgf87h0c6hvchpw4l8jgwwjrd0",
+      "drv": "/nix/store/jvr3d9vgf87h0c6hvchpw4l8jgwwjrd0-toml11-4.4.0.drv",
+      "deps": [
+        "nlohmann_json"
+      ]
+    },
+    {
+      "name": "aws-c-io",
+      "version": "0.22.0",
+      "tier": 2,
+      "cache_key": "hh2zrr6bsivvnyb7f919c31gih4gpkk3",
+      "drv": "/nix/store/hh2zrr6bsivvnyb7f919c31gih4gpkk3-aws-c-io-0.22.0.drv",
+      "deps": [
+        "aws-c-cal",
+        "aws-c-common",
+        "s2n-tls"
+      ]
+    },
+    {
+      "name": "krb5",
+      "version": "1.22.2",
+      "tier": 2,
+      "cache_key": "f205z3956r5ra668qk24wvj2pb9spjny",
+      "drv": "/nix/store/f205z3956r5ra668qk24wvj2pb9spjny-krb5-1.22.2.drv",
+      "deps": [
+        "libedit",
+        "openssl"
+      ]
+    },
+    {
+      "name": "libarchive",
+      "version": "3.8.7",
+      "tier": 2,
+      "cache_key": "2hslcn30wvmxmipdcv151cb69i1w93dq",
+      "drv": "/nix/store/2hslcn30wvmxmipdcv151cb69i1w93dq-libarchive-3.8.7.drv",
+      "deps": [
+        "bzip2",
+        "libxml2",
+        "lzo",
+        "openssl",
+        "xz",
+        "zlib",
+        "zstd"
+      ]
+    },
+    {
+      "name": "libgit2",
+      "version": "1.9.4",
+      "tier": 2,
+      "cache_key": "m5ya9xkdj0s7sn9rk5j1q1165axqlh13",
+      "drv": "/nix/store/m5ya9xkdj0s7sn9rk5j1q1165axqlh13-libgit2-1.9.4.drv",
+      "deps": [
+        "libiconv",
+        "libssh2",
+        "llhttp",
+        "openssl",
+        "pcre2",
+        "zlib"
+      ]
+    },
+    {
+      "name": "libidn2",
+      "version": "2.3.8",
+      "tier": 2,
+      "cache_key": "ww15w1cvdpk8zy9nvmyjcj6lispcjy2f",
+      "drv": "/nix/store/ww15w1cvdpk8zy9nvmyjcj6lispcjy2f-libidn2-2.3.8.drv",
+      "deps": [
+        "libiconv",
+        "libunistring"
+      ]
+    },
+    {
+      "name": "libxslt",
+      "version": "1.1.45",
+      "tier": 2,
+      "cache_key": "g1wmiqirqax6x60bsrvjiahgg9drmg64",
+      "drv": "/nix/store/g1wmiqirqax6x60bsrvjiahgg9drmg64-libxslt-1.1.45.drv",
+      "deps": [
+        "gettext",
+        "libxml2"
+      ]
+    },
+    {
+      "name": "aws-c-event-stream",
+      "version": "0.7.0",
+      "tier": 3,
+      "cache_key": "x4pz0hdnmacx6vz0gs8gkvyq88nfz24i",
+      "drv": "/nix/store/x4pz0hdnmacx6vz0gs8gkvyq88nfz24i-aws-c-event-stream-0.7.0.drv",
+      "deps": [
+        "aws-c-cal",
+        "aws-c-common",
+        "aws-c-io",
+        "aws-checksums",
+        "s2n-tls"
+      ]
+    },
+    {
+      "name": "aws-c-http",
+      "version": "0.10.4",
+      "tier": 3,
+      "cache_key": "kbxis52n65508xk43vn2zbarky395sbq",
+      "drv": "/nix/store/kbxis52n65508xk43vn2zbarky395sbq-aws-c-http-0.10.4.drv",
+      "deps": [
+        "aws-c-cal",
+        "aws-c-common",
+        "aws-c-compression",
+        "aws-c-io",
+        "s2n-tls"
+      ]
+    },
+    {
+      "name": "libpsl",
+      "version": "0.21.5",
+      "tier": 3,
+      "cache_key": "58ka0m3np77nf9lc083czwqpsjpk4pj6",
+      "drv": "/nix/store/58ka0m3np77nf9lc083czwqpsjpk4pj6-libpsl-0.21.5.drv",
+      "deps": [
+        "libidn2",
+        "libunistring",
+        "libxslt",
+        "publicsuffix-list"
+      ]
+    },
+    {
+      "name": "aws-c-auth",
+      "version": "0.9.1",
+      "tier": 4,
+      "cache_key": "9b834g1cfy5krzyq93r6hs00qznxprvn",
+      "drv": "/nix/store/9b834g1cfy5krzyq93r6hs00qznxprvn-aws-c-auth-0.9.1.drv",
+      "deps": [
+        "aws-c-cal",
+        "aws-c-common",
+        "aws-c-compression",
+        "aws-c-http",
+        "aws-c-io",
+        "aws-c-sdkutils",
+        "s2n-tls"
+      ]
+    },
+    {
+      "name": "aws-c-mqtt",
+      "version": "0.13.3",
+      "tier": 4,
+      "cache_key": "2biyr165rsgf6sl09imy9a7l7q5vf8ng",
+      "drv": "/nix/store/2biyr165rsgf6sl09imy9a7l7q5vf8ng-aws-c-mqtt-0.13.3.drv",
+      "deps": [
+        "aws-c-cal",
+        "aws-c-common",
+        "aws-c-compression",
+        "aws-c-http",
+        "aws-c-io",
+        "s2n-tls"
+      ]
+    },
+    {
+      "name": "curl",
+      "version": "8.20.0",
+      "tier": 4,
+      "cache_key": "gzlacdps92nlz0g8zc1qp0sg4y8w62kz",
+      "drv": "/nix/store/gzlacdps92nlz0g8zc1qp0sg4y8w62kz-curl-8.20.0.drv",
+      "deps": [
+        "brotli",
+        "krb5",
+        "libidn2",
+        "libpsl",
+        "libssh2",
+        "nghttp2",
+        "nghttp3",
+        "ngtcp2",
+        "openssl",
+        "zlib",
+        "zstd"
+      ]
+    },
+    {
+      "name": "aws-c-s3",
+      "version": "0.8.7",
+      "tier": 5,
+      "cache_key": "pwkvhydj4gn464sxcfqkzk1d88wxl30v",
+      "drv": "/nix/store/pwkvhydj4gn464sxcfqkzk1d88wxl30v-aws-c-s3-0.8.7.drv",
+      "deps": [
+        "aws-c-auth",
+        "aws-c-cal",
+        "aws-c-common",
+        "aws-c-compression",
+        "aws-c-http",
+        "aws-c-io",
+        "aws-checksums",
+        "s2n-tls"
+      ]
+    },
+    {
+      "name": "aws-crt-cpp",
+      "version": "0.34.3",
+      "tier": 6,
+      "cache_key": "a2ihrljlqb57n86z434yfngv1dhk5wyp",
+      "drv": "/nix/store/a2ihrljlqb57n86z434yfngv1dhk5wyp-aws-crt-cpp-0.34.3.drv",
+      "deps": [
+        "aws-c-auth",
+        "aws-c-cal",
+        "aws-c-common",
+        "aws-c-compression",
+        "aws-c-event-stream",
+        "aws-c-http",
+        "aws-c-io",
+        "aws-c-mqtt",
+        "aws-c-s3",
+        "aws-checksums",
+        "s2n-tls"
+      ]
+    }
+  ]
+}
