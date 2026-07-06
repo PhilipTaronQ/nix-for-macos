@@ -1,0 +1,10 @@
+# Dependency build order (tiers from bom/tiers.json; within a tier, order is
+# arbitrary). One name per line = .github/deps/<name>/ = nixpkgs attr.
+
+# --- tier 0 ---
+zlib
+xz
+bzip2
+zstd
+lzo
+pcre2
