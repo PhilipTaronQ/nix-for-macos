@@ -24,3 +24,19 @@ nghttp3
 # tier 0 complete (18/21 built). Not built by design:
 #   libiconv (both BOM copies) — links /usr/lib/libiconv.dylib (DESIGN.md §6.5)
 #   c-ares, ncurses, publicsuffix-list — curl-slicing cuts (DESIGN.md §6.3)
+
+# --- tier 1 ---
+libunistring
+sqlite
+toml11
+nghttp2
+s2n-tls
+aws-checksums
+aws-c-compression
+aws-c-sdkutils
+aws-c-cal
+ngtcp2
+boost
+
+# tier 1: gettext, libedit, libssh2, libxml2 not built — curl-slicing cuts
+# (DESIGN.md §6.3).
