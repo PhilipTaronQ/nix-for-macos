@@ -8,3 +8,5 @@ bzip2
 zstd
 lzo
 pcre2
+openssl
+boehmgc
