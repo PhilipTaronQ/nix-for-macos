@@ -10,3 +10,13 @@ lzo
 pcre2
 openssl
 boehmgc
+brotli
+nlohmann_json
+editline
+libev
+libblake3
+aws-c-common
+lowdown
+llhttp
+libsodium
+nghttp3
