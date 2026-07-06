@@ -50,3 +50,22 @@ libgit2
 libarchive
 
 # tier 2: krb5, libxslt not built — curl-slicing cuts (DESIGN.md §6.3).
+
+# --- tier 3 ---
+aws-c-http
+aws-c-event-stream
+
+# tier 3: libpsl not built — curl-slicing cut (DESIGN.md §6.3).
+
+# --- tier 4 ---
+aws-c-auth
+aws-c-mqtt
+curl
+
+# --- tier 5 ---
+aws-c-s3
+
+# --- tier 6 ---
+aws-crt-cpp
+
+# BOM COMPLETE: 41 built + libiconv (system dylib) = 42/42 (DESIGN.md §6).
