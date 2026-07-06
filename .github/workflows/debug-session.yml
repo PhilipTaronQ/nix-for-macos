@@ -1,0 +1,121 @@
+name: debug-session
+
+# Interactive dev box on a macOS runner (DESIGN.md §9.5). The runner joins the
+# tailnet as an ephemeral node, enables macOS's native sshd, and holds the job
+# open mid-workflow so you can SSH in and iterate on dependency builds. Steps
+# AFTER the hold still run when the session ends, which is where per-dep GHA
+# cache saves will land — interactive progress becomes permanent progress.
+#
+# Setup (done 2026-07-06 via the Tailscale API; recorded for renewal):
+#   1. Tailnet policy: `tag:gha-debug` under tagOwners (owner autogroup:admin).
+#      The default allow-all ACL already permits reaching the node on :22.
+#   2. Repo secret TS_AUTHKEY: a reusable + ephemeral + preauthorized auth key
+#      tagged tag:gha-debug. Max key lifetime is 90 days — when it expires,
+#      mint a new one (OAuth clients cannot be created via API):
+#        curl -u "$TS_API_KEY:" -H 'Content-Type: application/json' \
+#          -d '{"capabilities":{"devices":{"create":{"reusable":true,
+#               "ephemeral":true,"preauthorized":true,"tags":["tag:gha-debug"]}}},
+#               "expirySeconds":7776000,"description":"gha-debug-session nix-for-macos"}' \
+#          https://api.tailscale.com/api/v2/tailnet/-/keys \
+#        | jq -r .key | gh secret set TS_AUTHKEY -R PhilipTaronQ/nix-for-macos
+#   3. Your SSH public keys must be visible at https://github.com/<you>.keys —
+#      the dispatching actor's keys are what get authorized on the runner.
+#
+# Usage (workflow must be on the default branch to be dispatchable):
+#   gh workflow run debug-session.yml [-f duration-minutes=180]
+#   gh run watch            # then read the "Session info" step for the ssh cmd
+#   ssh runner@<tailscale-ip>
+#   ...work in $GITHUB_WORKSPACE; stage installs under ./staging...
+#   touch /tmp/session-done # end the session; post-hold steps run
+
+on:
+  workflow_dispatch:
+    inputs:
+      duration-minutes:
+        description: How long to hold the runner open (clamped to 330)
+        default: "120"
+      install-nix:
+        description: Install the demoted Nix (source oracle) before the hold
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  session:
+    runs-on: macos-26
+    # Hosted jobs hard-stop at 360 min; the hold clamps itself to 330 so the
+    # post-hold steps (cache/artifact saves) always get to run.
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install demoted Nix (source oracle)
+        if: ${{ inputs.install-nix }}
+        uses: cachix/install-nix-action@8aa03977d8d733052d78f4e008a241fd1dbf36b3 # v31.10.6
+
+      # Tailscale provides the network path only; login is macOS's native sshd
+      # below — no reliance on Tailscale SSH server support on macOS. The key
+      # itself is tagged + ephemeral + preauthorized, and the action's
+      # post-step logs the node out.
+      - name: Join tailnet (ephemeral node)
+        uses: tailscale/github-action@780049a30b6ff5c378a9e7b389d15ece7a204888 # v4.1.3
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+          hostname: gha-debug-${{ github.run_id }}
+          # Run logs are public: quiet suppresses the action's informational
+          # output, which otherwise prints the tailnet's MagicDNS name.
+          log-mode: quiet
+
+      - name: Enable sshd, authorize dispatcher's GitHub keys
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          curl -fsSL "https://github.com/${{ github.actor }}.keys" >> ~/.ssh/authorized_keys
+          chmod 600 ~/.ssh/authorized_keys
+          if ! [ -s ~/.ssh/authorized_keys ]; then
+            echo "::error::no public SSH keys found for ${{ github.actor }} on GitHub"
+            exit 1
+          fi
+          sudo systemsetup -setremotelogin on \
+            || sudo launchctl load -w /System/Library/LaunchDaemons/ssh.plist
+
+      # Public logs: print only the MagicDNS hostname (deterministic, no
+      # tailnet suffix) — never the tailscale IP.
+      - name: Session info
+        run: |
+          echo "===== SSH session ready ====="
+          echo "  ssh runner@gha-debug-${{ github.run_id }}"
+          echo "workspace: $GITHUB_WORKSPACE"
+          echo "end session: touch /tmp/session-done   (or wait for timeout)"
+
+      - name: Hold for SSH session
+        run: |
+          limit=$(( ${{ inputs.duration-minutes }} * 60 ))
+          max=$(( 330 * 60 ))
+          [ "$limit" -gt "$max" ] && limit=$max
+          echo "holding up to $(( limit / 60 )) minutes"
+          while [ ! -f /tmp/session-done ] && [ "$SECONDS" -lt "$limit" ]; do
+            sleep 30
+          done
+          echo "session ended after $(( SECONDS / 60 )) minutes"
+
+      # ---- post-hold: everything below runs after the session ends ----
+      # Per-dep GHA cache saves (keyed per bom/tiers.json + salt, DESIGN §9.3)
+      # go here once tier builds exist. Until then, preserve any staged work.
+
+      - name: Pack staging prefix (if any)
+        if: always()
+        run: |
+          if [ -d staging ]; then
+            tar -czf /tmp/staging.tgz staging
+            echo "packed $(du -h /tmp/staging.tgz | cut -f1) of staged work"
+          fi
+
+      - name: Upload staging artifact
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: staging-${{ github.run_id }}
+          path: /tmp/staging.tgz
+          if-no-files-found: ignore
