@@ -163,7 +163,10 @@ jobs:
           N=$PWD/dist/nix-bin/nix
           "$N" --version
           echo "=== pure eval ==="
-          "$N" --extra-experimental-features "nix-command flakes" eval \
+          # Even pure eval opens a store, and store=auto wants /nix — which
+          # only the installer creates (§11). Explicit --store on clean hosts.
+          "$N" --extra-experimental-features "nix-command flakes" \
+            --store /private/tmp/verify-store eval \
             --expr 'builtins.hashString "sha256" "clean-runner"'
           echo "=== store machinery ==="
           echo smoke > /private/tmp/smoke
