@@ -4,12 +4,12 @@
 # on a bare runner the stdenv-isms must be supplied explicitly.
 set -euo pipefail
 : "${STAGING:?set STAGING to the absolute staging prefix}"
-export PATH="$HOME/.nix-profile/bin:$STAGING/bin:$PATH"
+export PATH="$HOME/.nix-profile/bin:/opt/nix/libexec/git/bin:/opt/nix/libexec/bash/bin:$STAGING/bin:$PATH"
 export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-14.0}"
 # stdenv-isms:
 #   shell — stdenv exports the build shell; formatter.sh writes
 #   #!  scripts (see its TODO_NixOS comment).
-export shell="$STAGING/bin/bash"
+export shell=/opt/nix/libexec/bash/bin/bash
 #   _NIX_TEST_NO_SANDBOX — upstream sets this implicitly (vars.sh flips it
 #   whenever NIX_STORE is set, which inside nix builds is always): the
 #   functional suite is DESIGNED to run unsandboxed. Real sandbox_init

@@ -4,7 +4,7 @@
 # Build tools (meson/ninja/cmake/pkg-config/bison/flex) from the demoted Nix.
 set -euo pipefail
 : "${STAGING:?set STAGING to the absolute staging prefix}"
-export NIX_OUT="${NIX_OUT:-$PWD/outputs/nix}"
+export PAYLOAD="${PAYLOAD:-$PWD/outputs/payload}"
 export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-14.0}"
 export PKG_CONFIG_LIBDIR="$STAGING/lib/pkgconfig:$STAGING/share/pkgconfig"
 # Staging bin first: meson captures bash (and git/ssh) at configure time —
@@ -27,7 +27,12 @@ export PATH="$HOME/.nix-profile/bin:$PATH"
 for t in meson ninja cmake pkg-config bison flex jv; do
   command -v "$t" >/dev/null || { echo "missing build tool: $t (see debug-session.yml build-tools step)" >&2; exit 1; }
 done
-meson setup build --prefix="$NIX_OUT" \
+meson setup build --prefix=/opt/nix \
+  -Dsysconfdir=/etc -Dlocalstatedir=/nix/var \
+  -Dlibfetchers:git-program=/opt/nix/libexec/git/bin/git \
+  -Dlibstore:ssh-program=/opt/nix/libexec/openssh/bin/ssh \
+  -Dlibstore:lsof-program=/opt/nix/libexec/lsof/bin/lsof \
+  -Dnix:bash-program=/opt/nix/libexec/bash/bin/bash \
   -Dbuildtype=release -Dstrip=true \
       -Dprefer_static=true \
       -Ddefault_library=static \
@@ -40,4 +45,11 @@ meson setup build --prefix="$NIX_OUT" \
       -Dlibcmd:markdown=enabled \
   -Dlibfetchers:mercurial-fetcher=false
     ninja -C build -j"$(sysctl -n hw.ncpu)"
-    meson install -C build
+    meson install -C build --destdir "$PAYLOAD"
+
+# Populate the REAL /opt/nix so the baked absolute paths resolve during the
+# test ladder (one build flavor: what ships is what's tested — §11.2a). The
+# runner is ephemeral; sudo is passwordless.
+sudo mkdir -p /opt/nix
+sudo ditto "$STAGING/payload/opt/nix" /opt/nix
+sudo ditto "$PAYLOAD/opt/nix" /opt/nix

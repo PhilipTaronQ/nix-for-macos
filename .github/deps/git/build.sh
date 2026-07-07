@@ -18,9 +18,9 @@ KNOBS=(
   NO_APPLE_COMMON_CRYPTO=1 NO_OPENSSL=1 NO_INSTALL_HARDLINKS=1
   CURL_LDFLAGS="$("$STAGING/bin/curl-config" --static-libs)"
 )
-./configure --prefix="$STAGING" \
+./configure --prefix=/opt/nix/libexec/git \
   ac_cv_prog_CURL_CONFIG="$STAGING/bin/curl-config" \
   ac_cv_lib_curl_curl_global_init=yes \
   LDFLAGS="-L$STAGING/lib -Wl,-search_paths_first"
 make -j"$(sysctl -n hw.ncpu)" "${KNOBS[@]}"
-make "${KNOBS[@]}" install
+make "${KNOBS[@]}" DESTDIR="$STAGING/payload" install
