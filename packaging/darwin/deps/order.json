@@ -8,5 +8,6 @@
   "openssl",
   "boehmgc",
   "brotli",
-  "nlohmann_json"
+  "nlohmann_json",
+  "editline"
 ]
