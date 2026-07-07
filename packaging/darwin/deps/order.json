@@ -6,5 +6,6 @@
   "lzo",
   "pcre2",
   "openssl",
-  "boehmgc"
+  "boehmgc",
+  "brotli"
 ]
