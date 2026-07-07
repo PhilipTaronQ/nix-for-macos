@@ -582,19 +582,24 @@ interop we cannot honor — the action sets are disjoint, and a receipt that
 deserializes cleanly but describes actions the reader half-understands is
 the worst failure mode available. Instead:
 
-- **Path**: `/var/db/nix-for-macos/receipt.json` — macOS-idiomatic state
+- **Path**: `/var/db/nix/install-ledger.json` — macOS-idiomatic state
   location, **outside `/nix`**, so the ledger survives deletion of the
   volume mid-uninstall (DetSys keeps theirs inside `/nix` and must order
-  around sawing off their own branch).
+  around sawing off their own branch). Naming note: this project aims to
+  be upstreamed, so no `nix-for-macos` branding anywhere in installed
+  artifacts — it's just Nix.
 - **Self-identifying schema**: first fields are
-  `format: "org.nixos.nix-for-macos.receipt"` and an integer `version`.
+  `format: "org.nixos.nix.install-ledger"` and an integer `version`.
   The parser refuses any file without the magic — nothing we didn't write
   is ever replayed.
-- **Foreign-install pre-flight**: `/nix/receipt.json` exists ⇒ a
-  nix-installer installation is present ⇒ refuse with guidance; `/nix`
-  exists with no known receipt ⇒ upstream install-sh ⇒ refuse; shell files
-  are symlinks ⇒ nix-darwin ⇒ refuse. We never uninstall what we did not
-  install.
+- **Prior-installation pre-flight** (to be hardened in due time): refuse
+  to install over any prior Nix installation we didn't create, with
+  guidance. `/nix/receipt.json` (nix-installer) is one signal; the older
+  upstream install-sh and nix-darwin each have their own tells (e.g.
+  `/nix/var/nix` state without any receipt; symlinked `/etc/zshrc`
+  et al.). Enumerating and testing the full signal set is deferred
+  hardening work — the *posture* (never uninstall what we did not
+  install) is locked now.
 - **Single-writer lock**: an `flock` on a lockfile beside the receipt,
   taken by install, uninstall, *and* the self-heal `repair` daemon (§11.2
   step 14) — repair racing an uninstall is otherwise corruption by design.
