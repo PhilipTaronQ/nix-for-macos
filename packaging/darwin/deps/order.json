@@ -15,5 +15,6 @@
   "aws-c-common",
   "lowdown",
   "llhttp",
-  "libsodium"
+  "libsodium",
+  "nghttp3"
 ]
