@@ -3,5 +3,6 @@
   "xz",
   "bzip2",
   "zstd",
-  "lzo"
+  "lzo",
+  "pcre2"
 ]
