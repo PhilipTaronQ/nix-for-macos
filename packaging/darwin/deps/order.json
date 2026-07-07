@@ -28,5 +28,6 @@
   "aws-c-cal",
   "ngtcp2",
   "boost",
-  "libxml2"
+  "libxml2",
+  "libidn2"
 ]
