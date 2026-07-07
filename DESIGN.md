@@ -572,12 +572,37 @@ NixOS/nix-installer (Rust) minus the ceremony. Salvage analysis of the Rust
 installer (local checkout `~/Code/github.com/NixOS/nix-installer`; file
 pointers below refer to it) informs everything in this section.
 
-### 11.1 Receipt model (the part ported faithfully)
+### 11.1 Receipt model (the concept ported faithfully; the file deliberately NOT shared)
 
-A versioned `receipt.json` at `/nix/receipt.json`: a **flat, ordered list of
-actions**, each a Swift `Codable` value carrying its captured parameters
-(disk, UUID, plist text, …) plus a state: `uncompleted` / `completed` /
-`skipped` (skipped = detected already-done at plan time; never reverted).
+**Our receipt is not DetSys's `/nix/receipt.json`, by design.** That path
+and schema are nix-installer's namespace: writing there means `sudo
+/nix/nix-installer uninstall` (documented muscle memory) parses *our* file
+with *their* schema, and adopting their schema instead would imply an
+interop we cannot honor — the action sets are disjoint, and a receipt that
+deserializes cleanly but describes actions the reader half-understands is
+the worst failure mode available. Instead:
+
+- **Path**: `/var/db/nix-for-macos/receipt.json` — macOS-idiomatic state
+  location, **outside `/nix`**, so the ledger survives deletion of the
+  volume mid-uninstall (DetSys keeps theirs inside `/nix` and must order
+  around sawing off their own branch).
+- **Self-identifying schema**: first fields are
+  `format: "org.nixos.nix-for-macos.receipt"` and an integer `version`.
+  The parser refuses any file without the magic — nothing we didn't write
+  is ever replayed.
+- **Foreign-install pre-flight**: `/nix/receipt.json` exists ⇒ a
+  nix-installer installation is present ⇒ refuse with guidance; `/nix`
+  exists with no known receipt ⇒ upstream install-sh ⇒ refuse; shell files
+  are symlinks ⇒ nix-darwin ⇒ refuse. We never uninstall what we did not
+  install.
+- **Single-writer lock**: an `flock` on a lockfile beside the receipt,
+  taken by install, uninstall, *and* the self-heal `repair` daemon (§11.2
+  step 14) — repair racing an uninstall is otherwise corruption by design.
+
+The receipt itself: a **flat, ordered list of actions**, each a Swift
+`Codable` value carrying its captured parameters (disk, UUID, plist text,
+…) plus a state: `uncompleted` / `completed` / `skipped` (skipped =
+detected already-done at plan time; never reverted).
 
 - **Install**: iterate forward, fail-fast, **persist the receipt after every
   step including on failure** — a half-applied install stays reversible
