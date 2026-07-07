@@ -34,5 +34,6 @@
   "libgit2",
   "libarchive",
   "aws-c-http",
-  "aws-c-event-stream"
+  "aws-c-event-stream",
+  "aws-c-auth"
 ]
