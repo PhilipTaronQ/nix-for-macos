@@ -20,5 +20,6 @@
   "libunistring",
   "sqlite",
   "toml11",
-  "nghttp2"
+  "nghttp2",
+  "s2n-tls"
 ]
