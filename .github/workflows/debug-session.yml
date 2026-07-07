@@ -79,6 +79,7 @@ jobs:
             "github:NixOS/nixpkgs/$PIN#m4" \
             "github:NixOS/nixpkgs/$PIN#bmake" \
             "github:NixOS/nixpkgs/$PIN#jsonschema" \
+            "github:NixOS/nixpkgs/$PIN#doxygen" \
             "github:NixOS/nixpkgs/$PIN#coreutils" \
             "github:NixOS/nixpkgs/$PIN#gnused" \
             "github:NixOS/nixpkgs/$PIN#gnugrep" \
