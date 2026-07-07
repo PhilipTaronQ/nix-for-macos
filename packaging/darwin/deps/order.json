@@ -12,5 +12,6 @@
   "editline",
   "libev",
   "libblake3",
-  "aws-c-common"
+  "aws-c-common",
+  "lowdown"
 ]
