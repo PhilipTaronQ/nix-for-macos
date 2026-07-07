@@ -10,5 +10,6 @@
   "brotli",
   "nlohmann_json",
   "editline",
-  "libev"
+  "libev",
+  "libblake3"
 ]
