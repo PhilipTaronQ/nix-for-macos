@@ -37,5 +37,6 @@
   "aws-c-event-stream",
   "aws-c-auth",
   "aws-c-mqtt",
-  "curl"
+  "curl",
+  "aws-c-s3"
 ]
