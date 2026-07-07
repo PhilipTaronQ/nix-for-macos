@@ -9,5 +9,6 @@
   "boehmgc",
   "brotli",
   "nlohmann_json",
-  "editline"
+  "editline",
+  "libev"
 ]
