@@ -44,5 +44,6 @@
   "readline",
   "bashInteractive",
   "lsof",
-  "openssh"
+  "openssh",
+  "git"
 ]
