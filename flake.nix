@@ -365,6 +365,14 @@
           nix-manual-manpages-only = nixpkgsFor.${system}.native.nixComponents2.nix-manual-manpages-only;
           nix-internal-api-docs = nixpkgsFor.${system}.native.nixComponents2.nix-internal-api-docs;
           nix-external-api-docs = nixpkgsFor.${system}.native.nixComponents2.nix-external-api-docs;
+          # Source manifest for the macOS-standalone build: every external
+          # dependency's src + version, resolved through the same
+          # nixDependencies scope the flake build uses.
+          standalone-sources = import ./packaging/standalone-sources.nix {
+            inherit lib;
+            pkgs = nixpkgsFor.${system}.native;
+            inherit (packageSetsFor { pkgs = nixpkgsFor.${system}.native; }) nixDependencies;
+          };
         }
         # We need to flatten recursive attribute sets of derivations to pass `flake check`.
         //

@@ -3,18 +3,15 @@
 #
 # Usage: .github/deps/dep.sh <name>
 #   <name> is both the directory (.github/deps/<name>/build.sh) and the
-#   nixpkgs attribute (see fetch.sh for the override caveat).
+#   entry in order.json / the standalone-sources manifest.
 #
-# Per-dep fetch override: if .github/deps/<name>/fetch.sh exists, it is used
-# instead of the generic fetch.sh — for deps the flake overrides (libgit2).
-# Contract: `<name>/fetch.sh version` prints the version; `<name>/fetch.sh
-# <dest>` fetches+unpacks.
+# Sources come from ONE flake build (`nix build .#standalone-sources`,
+# see fetch.sh); build-all.sh exports $SOURCES so the loop is nix-free.
 #
-# Skip logic: staging/.built/<name> records the version that was built.
-# If it matches the pin, the dep is skipped — a restored staging cache makes
-# previously built deps free. The stamp does NOT capture build.sh changes;
-# `rm staging/.built/<name>` after editing one. The production pipeline will
-# use .drv-hash cache keys instead (DESIGN.md §9.3).
+# Skip logic: staging/.built/<name> records "<version> <build.sh sha256>".
+# If it matches, the dep is skipped — a restored staging cache makes
+# previously built deps free, and editing a build.sh invalidates its own
+# stamp automatically.
 set -euo pipefail
 
 name=$1
@@ -27,26 +24,26 @@ export MACOSX_DEPLOYMENT_TARGET="${MACOSX_DEPLOYMENT_TARGET:-14.0}"
 # pkg-config trees (the runner ships one at /opt/homebrew/lib/pkgconfig).
 export PKG_CONFIG_LIBDIR="$STAGING/lib/pkgconfig:$STAGING/share/pkgconfig"
 
-if [ -x "$deps_dir/$name/fetch.sh" ]; then
-    fetch=("$deps_dir/$name/fetch.sh")
-    version=$("${fetch[@]}" version)
-else
-    fetch=("$deps_dir/fetch.sh" "$name")
-    pin=$(jq -r ".nodes.nixpkgs.locked.rev" "$repo_root/flake.lock")
-    version=$(nix --extra-experimental-features "nix-command flakes" \
-        eval --raw "github:NixOS/nixpkgs/$pin#$name.version")
+if [ -z "${SOURCES:-}" ]; then
+    SOURCES=$(nix --extra-experimental-features 'nix-command flakes' \
+        build --no-link --print-out-paths "$repo_root#standalone-sources")
 fi
+export SOURCES
+
+version=$(jq -er --arg n "$name" '.[$n].version' "$SOURCES/manifest.json") \
+    || { echo "no manifest entry for $name (missing from order.json?)" >&2; exit 1; }
+want="$version $(shasum -a 256 "$deps_dir/$name/build.sh" | cut -d' ' -f1)"
 
 stamp="$STAGING/.built/$name"
-if [ -e "$stamp" ] && [ "$(cat "$stamp")" = "$version" ]; then
+if [ -e "$stamp" ] && [ "$(cat "$stamp")" = "$want" ]; then
     echo "skip  $name $version (already in staging)"
     exit 0
 fi
 
 echo "build $name $version"
-"${fetch[@]}" "/tmp/build/$name"
+"$deps_dir/fetch.sh" "$name" "/tmp/build/$name"
 cd "/tmp/build/$name"
 bash "$deps_dir/$name/build.sh"
 
 mkdir -p "$STAGING/.built"
-echo "$version" > "$stamp"
+echo "$want" > "$stamp"

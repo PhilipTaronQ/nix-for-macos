@@ -102,7 +102,7 @@ jobs:
           key: staging-v1-${{ github.run_id }}
           restore-keys: staging-v1-
 
-      # Fetch-or-build anything order.txt lists that the restored staging
+      # Fetch-or-build anything order.json lists that the restored staging
       # lacks. continue-on-error: a broken build.sh must not kill the session
       # — debugging it is what the session is for.
       - name: Fetch-or-build deps

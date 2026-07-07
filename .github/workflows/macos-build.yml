@@ -20,6 +20,8 @@ on:
       - '.github/run-tests.sh'
       - 'src/**'
       - 'flake.lock'
+      - 'flake.nix'
+      - 'packaging/**'
       - 'meson.build'
 
 permissions:

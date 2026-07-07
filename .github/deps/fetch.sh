@@ -1,29 +1,31 @@
 #!/usr/bin/env bash
-# Fetch and unpack one dependency's source from the nixpkgs pin.
+# Unpack one dependency's pinned source from the standalone-sources manifest.
 #
-# Usage: .github/deps/fetch.sh <nixpkgs-attr> <dest-dir>
+# Usage: .github/deps/fetch.sh <name> <dest-dir>
 #
-# The pin is read from flake.lock (nodes.nixpkgs.locked.rev) — the single
-# source of truth — never hardcoded. The demoted Nix resolves and fetches
-# the exact source the pin specifies; this script normalizes the two shapes
-# a `.src` can take (a tarball, or a fetchFromGitHub directory — zstd is the
-# latter) into a fresh, writable <dest-dir>. Prints "<attr> <version>".
+# The source oracle is the flake itself: `nix build .#standalone-sources`
+# yields manifest.json + sources/<name> links, resolved through the same
+# nixDependencies scope the Nix build uses — packaging/dependencies.nix
+# overrides (libgit2 1.9.4 today) flow through with zero shell-side
+# bookkeeping. $SOURCES may point at a prebuilt manifest (build-all.sh
+# exports it); otherwise one flake build provisions it here.
 #
-# CAVEAT: raw `nixpkgs#<attr>` is correct only for deps the flake does not
-# override. Overridden deps (libgit2 → 1.9.4, boost, libblake3, boehmgc, …)
-# must be sourced through the flake's own eval when we reach them — see
-# DESIGN.md §6.2/§9.3.
+# Normalizes the two shapes a `.src` can take (a tarball, or a
+# fetchFromGitHub directory — zstd is the latter) into a fresh, writable
+# <dest-dir>. Prints "<name> <version>".
 set -euo pipefail
 
-attr=$1
+name=$1
 dest=$2
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 
-pin=$(jq -r '.nodes.nixpkgs.locked.rev' "$repo_root/flake.lock")
-nix=(nix --extra-experimental-features nix-command --extra-experimental-features flakes)
+if [ -z "${SOURCES:-}" ]; then
+    SOURCES=$(nix --extra-experimental-features 'nix-command flakes' \
+        build --no-link --print-out-paths "$repo_root#standalone-sources")
+fi
 
-src=$("${nix[@]}" build --no-link --print-out-paths "github:NixOS/nixpkgs/$pin#$attr.src")
-version=$("${nix[@]}" eval --raw "github:NixOS/nixpkgs/$pin#$attr.version")
+src=$(jq -er --arg n "$name" '.[$n].source' "$SOURCES/manifest.json")
+version=$(jq -er --arg n "$name" '.[$n].version' "$SOURCES/manifest.json")
 
 rm -rf "$dest"
 mkdir -p "$dest"
@@ -34,4 +36,4 @@ else
     tar -xf "$src" -C "$dest" --strip-components=1
 fi
 
-echo "$attr $version"
+echo "$name $version"
