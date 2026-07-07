@@ -17,5 +17,6 @@
   "llhttp",
   "libsodium",
   "nghttp3",
-  "libunistring"
+  "libunistring",
+  "sqlite"
 ]
