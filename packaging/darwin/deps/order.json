@@ -42,5 +42,6 @@
   "aws-crt-cpp",
   "ncurses",
   "readline",
-  "bashInteractive"
+  "bashInteractive",
+  "lsof"
 ]
