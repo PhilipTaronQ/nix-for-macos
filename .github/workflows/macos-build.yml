@@ -109,9 +109,10 @@ jobs:
               esac
             done
           }
-          for b in outputs/nix/bin/nix staging/bin/git staging/bin/ssh \
-                   staging/bin/lsof staging/bin/bash \
-                   staging/libexec/git-core/git-remote-http; do
+          for b in /opt/nix/bin/nix /opt/nix/libexec/git/bin/git \
+                   /opt/nix/libexec/openssh/bin/ssh /opt/nix/libexec/lsof/bin/lsof \
+                   /opt/nix/libexec/bash/bin/bash \
+                   /opt/nix/libexec/git/libexec/git-core/git-remote-http; do
             echo "checking $b"
             check "$b"
           done
@@ -119,12 +120,11 @@ jobs:
 
       - name: Assemble dist
         run: |
-          mkdir -p dist/helpers/bin dist/helpers/libexec dist/helpers/share
-          cp -R outputs/nix/bin dist/nix-bin
-          for h in git ssh lsof bash; do cp staging/bin/$h dist/helpers/bin/; done
-          cp -R staging/libexec/git-core dist/helpers/libexec/git-core
-          cp -R staging/share/git-core dist/helpers/share/git-core
-          tar -cf nix-macos-standalone.tar -C dist .
+          # /opt/nix was populated by build-nix.sh (§11.2a: one flavor,
+          # tested-as-shipped) — the artifact IS that tree.
+          test -f /opt/nix/Library/LaunchDaemons/org.nixos.nix-daemon.plist
+          grep -q "/opt/nix/bin/nix-daemon" /opt/nix/Library/LaunchDaemons/org.nixos.nix-daemon.plist
+          tar -cf nix-macos-standalone.tar -C / opt/nix
           shasum -a 256 nix-macos-standalone.tar
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -159,8 +159,10 @@ jobs:
       - name: Verify on a clean runner
         run: |
           test ! -e /nix && echo "/nix is absent — truly store-free run"
+          test ! -e /opt/nix && echo "/opt/nix absent before install"
           mkdir dist && tar -xf nix-macos-standalone.tar -C dist
-          N=$PWD/dist/nix-bin/nix
+          sudo ditto dist/opt/nix /opt/nix
+          N=/opt/nix/bin/nix
           "$N" --version
           echo "=== pure eval ==="
           # Even pure eval opens a store, and store=auto wants /nix — which
@@ -173,8 +175,12 @@ jobs:
           "$N" --extra-experimental-features nix-command \
             --store /private/tmp/verify-store store add-file /private/tmp/smoke
           echo "=== bundled git over https (via our curl + /etc/ssl trust) ==="
-          dist/helpers/bin/git ls-remote https://github.com/NixOS/nix HEAD | head -1
+          /opt/nix/libexec/git/bin/git ls-remote https://github.com/NixOS/nix HEAD | head -1
+          echo "=== nix -> bundled git at the BAKED path (fetchGit end to end) ==="
+          "$N" --extra-experimental-features "nix-command flakes" \
+            --store /private/tmp/verify-store eval --impure \
+            --expr 'toString (builtins.fetchGit { url = "https://github.com/lsof-org/lsof"; shallow = true; }).lastModified' | head -1
           echo "=== helper versions ==="
-          dist/helpers/bin/bash --version | head -1
-          dist/helpers/bin/ssh -V
+          /opt/nix/libexec/bash/bin/bash --version | head -1
+          /opt/nix/libexec/openssh/bin/ssh -V
           echo "verify-clean passed on ${{ matrix.runner }}"
