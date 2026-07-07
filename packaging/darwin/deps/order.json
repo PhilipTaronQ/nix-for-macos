@@ -35,5 +35,6 @@
   "libarchive",
   "aws-c-http",
   "aws-c-event-stream",
-  "aws-c-auth"
+  "aws-c-auth",
+  "aws-c-mqtt"
 ]
