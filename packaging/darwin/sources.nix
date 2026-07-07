@@ -30,7 +30,9 @@ let
   # (with Nixpkgs' own patch hooks cleared: hooks are where store paths
   # sneak into sources — git's git-sh-i18n.patch + postPatch hard-wires a
   # /nix/store gettext path, which is why raw src stays the default).
-  upstreamPatchSeries = [ ];
+  upstreamPatchSeries = [
+    "readline" # 8.3p3: readline83-001..003 (+ two static-irrelevant build patches)
+  ];
 
   sources = lib.genAttrs names (
     name:
