@@ -200,7 +200,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
+          # Semver rule: a hyphen in the tag means prerelease. Keeps
+          # releases/latest — what the action's default version resolves
+          # to — pinned to the last stable tag.
+          case "$GITHUB_REF_NAME" in
+            *-*) PRERELEASE=--prerelease ;;
+            *)   PRERELEASE= ;;
+          esac
+          gh release create "$GITHUB_REF_NAME" $PRERELEASE \
             --repo "${{ github.repository }}" \
             --title "Nix ${GITHUB_REF_NAME#v} (macOS standalone)" \
             --notes "Store-free Nix for macOS arm64. Install: \`sudo installer -pkg nix-*.pkg -target /\` or use the GitHub Action. Uninstall: \`sudo /opt/nix/libexec/nix-install uninstall\`. Checksums attached." \
