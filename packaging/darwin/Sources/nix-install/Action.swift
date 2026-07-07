@@ -45,17 +45,25 @@ struct Context {
 /// installer's typetag ceremony is what this replaces.
 ///
 /// `apply` is mutating: actions capture discovered state (container disk,
-/// volume UUID) into themselves, and the engine persists the mutated action
-/// back into the ledger — that captured state is what revert uses.
+/// volume UUID, encryption) into themselves, and the engine persists the
+/// mutated action back into the ledger — that captured state is what
+/// revert uses.
 enum Action: Codable {
     case syntheticConf(SyntheticConf)
     case materializeFirmlinks(MaterializeFirmlinks)
     case apfsVolume(ApfsVolume)
     case fstabEntry(FstabEntry)
+    case encryptVolume(EncryptVolume)
+    case volumeMountService(VolumeMountService)
+    case enableOwnership(EnableOwnership)
+    case buildUsers(BuildUsers)
+    case tmutilExclusions(TmutilExclusions)
+    case payload(Payload)
+    case nixConf(NixConf)
     case pathsD(PathsD)
-    // Coming per DESIGN.md §11.2: encryptVolume, volumeMountService,
-    // enableOwnership, buildUsers, tmutilExclusions, payload, nixConf,
-    // shellInit, daemonService, selfHealService.
+    case shellInit(ShellInit)
+    case daemonService(DaemonService)
+    case selfHealService(SelfHealService)
 
     var summary: String {
         switch self {
@@ -63,7 +71,27 @@ enum Action: Codable {
         case .materializeFirmlinks(let a): return a.summary
         case .apfsVolume(let a): return a.summary
         case .fstabEntry(let a): return a.summary
+        case .encryptVolume(let a): return a.summary
+        case .volumeMountService(let a): return a.summary
+        case .enableOwnership(let a): return a.summary
+        case .buildUsers(let a): return a.summary
+        case .tmutilExclusions(let a): return a.summary
+        case .payload(let a): return a.summary
+        case .nixConf(let a): return a.summary
         case .pathsD(let a): return a.summary
+        case .shellInit(let a): return a.summary
+        case .daemonService(let a): return a.summary
+        case .selfHealService(let a): return a.summary
+        }
+    }
+
+    /// Actions the self-heal daemon may re-apply: the file edits macOS
+    /// updates are known to clobber. Everything else heals only via a
+    /// deliberate reinstall.
+    var isRepairable: Bool {
+        switch self {
+        case .syntheticConf, .nixConf, .pathsD, .shellInit: return true
+        default: return false
         }
     }
 
@@ -73,24 +101,43 @@ enum Action: Codable {
         case .materializeFirmlinks(let a): return try a.isAlreadyDone(ctx)
         case .apfsVolume(let a): return try a.isAlreadyDone(ctx)
         case .fstabEntry(let a): return try a.isAlreadyDone(ctx)
+        case .encryptVolume(let a): return try a.isAlreadyDone(ctx)
+        case .volumeMountService(let a): return try a.isAlreadyDone(ctx)
+        case .enableOwnership(let a): return try a.isAlreadyDone(ctx)
+        case .buildUsers(let a): return try a.isAlreadyDone(ctx)
+        case .tmutilExclusions(let a): return try a.isAlreadyDone(ctx)
+        case .payload(let a): return try a.isAlreadyDone(ctx)
+        case .nixConf(let a): return try a.isAlreadyDone(ctx)
         case .pathsD(let a): return try a.isAlreadyDone(ctx)
+        case .shellInit(let a): return try a.isAlreadyDone(ctx)
+        case .daemonService(let a): return try a.isAlreadyDone(ctx)
+        case .selfHealService(let a): return try a.isAlreadyDone(ctx)
         }
     }
 
     mutating func apply(_ ctx: Context) throws {
         switch self {
-        case .syntheticConf(let a):
-            try a.apply(ctx)
-        case .materializeFirmlinks(let a):
-            try a.apply(ctx)
+        case .syntheticConf(let a): try a.apply(ctx)
+        case .materializeFirmlinks(let a): try a.apply(ctx)
         case .apfsVolume(var a):
             try a.apply(ctx)
             self = .apfsVolume(a)
         case .fstabEntry(var a):
             try a.apply(ctx)
             self = .fstabEntry(a)
-        case .pathsD(let a):
+        case .encryptVolume(let a): try a.apply(ctx)
+        case .volumeMountService(var a):
             try a.apply(ctx)
+            self = .volumeMountService(a)
+        case .enableOwnership(let a): try a.apply(ctx)
+        case .buildUsers(let a): try a.apply(ctx)
+        case .tmutilExclusions(let a): try a.apply(ctx)
+        case .payload(let a): try a.apply(ctx)
+        case .nixConf(let a): try a.apply(ctx)
+        case .pathsD(let a): try a.apply(ctx)
+        case .shellInit(let a): try a.apply(ctx)
+        case .daemonService(let a): try a.apply(ctx)
+        case .selfHealService(let a): try a.apply(ctx)
         }
     }
 
@@ -100,18 +147,38 @@ enum Action: Codable {
         case .materializeFirmlinks(let a): try a.revert(ctx)
         case .apfsVolume(let a): try a.revert(ctx)
         case .fstabEntry(let a): try a.revert(ctx)
+        case .encryptVolume(let a): try a.revert(ctx)
+        case .volumeMountService(let a): try a.revert(ctx)
+        case .enableOwnership(let a): try a.revert(ctx)
+        case .buildUsers(let a): try a.revert(ctx)
+        case .tmutilExclusions(let a): try a.revert(ctx)
+        case .payload(let a): try a.revert(ctx)
+        case .nixConf(let a): try a.revert(ctx)
         case .pathsD(let a): try a.revert(ctx)
+        case .shellInit(let a): try a.revert(ctx)
+        case .daemonService(let a): try a.revert(ctx)
+        case .selfHealService(let a): try a.revert(ctx)
         }
     }
 }
 
 /// The default install plan, in §11.2 order.
-func defaultPlan() -> [Action] {
+func defaultPlan(payloadSource: String? = nil) -> [Action] {
     [
         .syntheticConf(SyntheticConf()),
         .materializeFirmlinks(MaterializeFirmlinks()),
         .apfsVolume(ApfsVolume()),
         .fstabEntry(FstabEntry()),
+        .encryptVolume(EncryptVolume()),
+        .volumeMountService(VolumeMountService()),
+        .enableOwnership(EnableOwnership()),
+        .buildUsers(BuildUsers()),
+        .tmutilExclusions(TmutilExclusions()),
+        .payload(Payload(source: payloadSource)),
+        .nixConf(NixConf()),
         .pathsD(PathsD()),
+        .shellInit(ShellInit()),
+        .daemonService(DaemonService()),
+        .selfHealService(SelfHealService()),
     ]
 }

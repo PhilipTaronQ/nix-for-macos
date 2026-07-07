@@ -7,6 +7,7 @@ import XCTest
 /// handler. Reference semantics so tests can assert on calls afterwards.
 final class FakeRunner: CommandRunner {
     var calls: [[String]] = []
+    var stdins: [Data?] = []
     var handler: ([String]) -> CommandResult
 
     init(_ handler: @escaping ([String]) -> CommandResult) {
@@ -16,6 +17,7 @@ final class FakeRunner: CommandRunner {
     func run(_ program: String, _ arguments: [String], stdin: Data?) throws -> CommandResult {
         let call = [program] + arguments
         calls.append(call)
+        stdins.append(stdin)
         return handler(call)
     }
 }
@@ -205,52 +207,106 @@ final class VolumeActionsTests: XCTestCase {
 
     func testDefaultPlanInstallUninstallRoundTrip() throws {
         var volumeExists = false
+        var mountPoint = ""
         ctx.runner = FakeRunner { call in
             let joined = call.dropFirst().joined(separator: " ")
-            switch joined {
-            case "-t", "-B":
-                // apfs.util: simulate the firmlink appearing.
+            switch call[0] {
+            case MaterializeFirmlinks.apfsUtil:
                 try? FileManager.default.createDirectory(
                     at: self.root.appendingPathComponent("nix"),
                     withIntermediateDirectories: true)
                 return .ok()
+            case EncryptVolume.fdesetup:
+                return .ok("false\n")  // unencrypted system: encrypt skips
+            case BuildUsers.dseditgroup:
+                return .ok()
+            case BuildUsers.dscl:
+                // isAlreadyDone probes (-read) say "not there"; everything
+                // else (create/append/delete) succeeds.
+                return call.contains("-read") ? .fail(56) : .ok()
+            case TmutilExclusions.tmutil:
+                return .ok()
+            case VolumeMountService.launchctl:
+                switch call.dropFirst().first {
+                case "print": return .fail(113)
+                case "kickstart":
+                    if mountPoint.isEmpty { mountPoint = "/nix" }
+                    return .ok()
+                default: return .ok()
+                }
+            default: break
+            }
+            switch joined {
             case "info -plist /":
                 return .plist(["ParentWholeDisk": "disk3"])
             case "apfs addVolume disk3 APFS Nix -nomount":
                 volumeExists = true
                 return .ok()
             case "info -plist Nix":
-                // A faithful diskutil: the volume is only queryable once it
-                // has actually been created (and again not after deletion).
                 return volumeExists
-                    ? .plist(["VolumeUUID": "AAAA-BBBB", "MountPoint": ""])
+                    ? .plist([
+                        "VolumeUUID": "AAAA-BBBB", "MountPoint": mountPoint,
+                        "GlobalPermissionsEnabled": false,
+                    ])
                     : .fail(1, stderr: "Could not find disk: Nix")
+            case "info -plist /nix":
+                return volumeExists
+                    ? .plist(["GlobalPermissionsEnabled": false]) : .fail(1)
+            case "enableOwnership /nix":
+                return .ok()
             case "apfs deleteVolume AAAA-BBBB":
                 volumeExists = false
+                mountPoint = ""
+                return .ok()
+            case "unmount force Nix":
+                mountPoint = ""
                 return .ok()
             default:
-                return .fail(1, stderr: "unexpected: \(joined)")
+                return .fail(1, stderr: "unexpected: \(call.joined(separator: " "))")
             }
         }
-        let engine = Engine(store: LedgerStore(root: root), ctx: ctx)
 
-        try engine.install(plan: defaultPlan())
+        // The payload the .pkg (here: a source dir) provides, including the
+        // meson-installed daemon plist the DaemonService action copies.
+        let src = root.appendingPathComponent("payload-src")
+        try FileManager.default.createDirectory(
+            at: src.appendingPathComponent("bin"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(
+            at: src.appendingPathComponent("Library/LaunchDaemons"),
+            withIntermediateDirectories: true)
+        try "fake-nix".write(
+            to: src.appendingPathComponent("bin/nix"), atomically: true, encoding: .utf8)
+        try "<plist/>".write(
+            to: src.appendingPathComponent("Library/LaunchDaemons/org.nixos.nix-daemon.plist"),
+            atomically: true, encoding: .utf8)
+
+        let engine = Engine(store: LedgerStore(root: root), ctx: ctx)
+        try engine.install(plan: defaultPlan(payloadSource: src.path))
+
         let ledger = try LedgerStore(root: root).load()
-        XCTAssertEqual(ledger.actions.count, 5)
-        XCTAssertTrue(ledger.actions.allSatisfy { $0.state == .completed })
-        // Captured state made it into the persisted ledger.
+        XCTAssertEqual(ledger.actions.count, 15)
+        let states = ledger.actions.map(\.state)
+        XCTAssertFalse(states.contains(.uncompleted), "everything applied or skipped")
         guard case .apfsVolume(let vol) = ledger.actions[2].action else {
             return XCTFail("expected apfsVolume at index 2")
         }
         XCTAssertEqual(vol.volumeUUID, "AAAA-BBBB")
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: ctx.path(DaemonService.installedPlist).path))
 
         try engine.uninstall()
         XCTAssertFalse(LedgerStore(root: root).exists)
-        XCTAssertFalse(
-            FileManager.default.fileExists(
-                atPath: root.appendingPathComponent("etc/fstab").path))
-        XCTAssertFalse(
-            FileManager.default.fileExists(
-                atPath: root.appendingPathComponent("etc/paths.d/nix").path))
+        for path in [
+            "/etc/fstab", "/etc/paths.d/nix", "/etc/nix/nix.conf", "/opt/nix",
+            DaemonService.installedPlist, VolumeMountService.plistPath,
+            SelfHealService.plistPath,
+        ] {
+            XCTAssertFalse(
+                FileManager.default.fileExists(atPath: ctx.path(path).path),
+                "\(path) should be gone")
+        }
+        XCTAssertFalse(volumeExists, "the APFS volume was deleted")
     }
+
 }

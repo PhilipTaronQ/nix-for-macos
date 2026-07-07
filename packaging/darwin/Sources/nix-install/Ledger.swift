@@ -234,4 +234,30 @@ struct Engine {
             }
         }
     }
+
+    /// The self-heal entry point (§11.2 step 14): re-apply the repairable
+    /// file actions whose effects have drifted (macOS updates clobbering
+    /// /etc/zshrc is the canonical case). Only entries we completed are
+    /// candidates; states never change.
+    func repair() throws {
+        try store.withLock {
+            var ledger = try store.load()
+            for i in ledger.actions.indices {
+                let entry = ledger.actions[i]
+                guard entry.state == .completed, entry.action.isRepairable else {
+                    continue
+                }
+                if try entry.action.isAlreadyDone(ctx) {
+                    continue
+                }
+                ctx.log("repairing: \(entry.action.summary)")
+                if !ctx.dryRun {
+                    var action = entry.action
+                    try action.apply(ctx)
+                    ledger.actions[i].action = action
+                    try store.save(ledger)
+                }
+            }
+        }
+    }
 }

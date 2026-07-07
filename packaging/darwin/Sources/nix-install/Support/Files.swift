@@ -11,3 +11,12 @@ func atomicWrite(_ text: String, to url: URL, mode: Int = 0o644) throws {
     try FileManager.default.setAttributes([.posixPermissions: mode], ofItemAtPath: tmp.path)
     _ = try FileManager.default.replaceItemAt(url, withItemAt: tmp)
 }
+
+func atomicWriteData(_ data: Data, to url: URL, mode: Int = 0o644) throws {
+    let dir = url.deletingLastPathComponent()
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let tmp = dir.appendingPathComponent(".\(url.lastPathComponent).tmp-\(getpid())")
+    try data.write(to: tmp)
+    try FileManager.default.setAttributes([.posixPermissions: mode], ofItemAtPath: tmp.path)
+    _ = try FileManager.default.replaceItemAt(url, withItemAt: tmp)
+}

@@ -12,15 +12,15 @@ import Foundation
 ///                 root privileges required)
 ///   --dry-run     log what would happen; write no system state
 ///
-/// `repair` (the self-heal daemon's entry point, §11.2 step 14) is
-/// deliberately not implemented yet.
+///   nix-install repair     re-apply drifted repairable actions (self-heal)
 
 let usage = """
-usage: nix-install <install|uninstall|plan> [--root PATH] [--dry-run]
+usage: nix-install <install|uninstall|plan|repair> [--root PATH] [--dry-run] [--payload-source PATH]
 """
 
 var root = URL(fileURLWithPath: "/", isDirectory: true)
 var dryRun = false
+var payloadSource: String?
 var command: String?
 
 var argv = Array(CommandLine.arguments.dropFirst())
@@ -35,6 +35,12 @@ while !argv.isEmpty {
         root = URL(fileURLWithPath: argv.removeFirst(), isDirectory: true)
     case "--dry-run":
         dryRun = true
+    case "--payload-source":
+        guard !argv.isEmpty else {
+            FileHandle.standardError.write(Data("--payload-source needs a path\n".utf8))
+            exit(64)
+        }
+        payloadSource = argv.removeFirst()
     case "install", "uninstall", "plan", "repair":
         command = arg
     default:
@@ -63,7 +69,7 @@ do {
     switch command {
     case "install":
         requireRootIfReal()
-        try engine.install(plan: defaultPlan())
+        try engine.install(plan: defaultPlan(payloadSource: payloadSource))
         print("install complete; ledger: \(store.fileURL.path)")
     case "uninstall":
         requireRootIfReal()
@@ -76,13 +82,14 @@ do {
                 print("[\(entry.state.rawValue)] \(entry.action.summary)")
             }
         } else {
-            for action in defaultPlan() {
+            for action in defaultPlan(payloadSource: payloadSource) {
                 print("[planned] \(action.summary)")
             }
         }
     case "repair":
-        FileHandle.standardError.write(Data("repair: not implemented yet (§11.2 step 14)\n".utf8))
-        exit(69)
+        requireRootIfReal()
+        try engine.repair()
+        print("repair complete")
     default:
         fatalError("unreachable")
     }
