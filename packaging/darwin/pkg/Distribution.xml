@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<installer-gui-script minSpecVersion="2">
+    <title>Nix</title>
+    <options customize="never" require-scripts="true" rootVolumeOnly="true"/>
+    <volume-check>
+        <allowed-os-versions>
+            <os-version min="14.0"/>
+        </allowed-os-versions>
+    </volume-check>
+    <options hostArchitectures="arm64"/>
+    <choices-outline>
+        <line choice="default">
+            <line choice="org.nixos.nix"/>
+        </line>
+    </choices-outline>
+    <choice id="default"/>
+    <choice id="org.nixos.nix" visible="false">
+        <pkg-ref id="org.nixos.nix"/>
+    </choice>
+    <pkg-ref id="org.nixos.nix" version="@VERSION@" onConclusion="none">nix-component.pkg</pkg-ref>
+</installer-gui-script>
