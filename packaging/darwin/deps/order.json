@@ -14,5 +14,6 @@
   "libblake3",
   "aws-c-common",
   "lowdown",
-  "llhttp"
+  "llhttp",
+  "libsodium"
 ]
