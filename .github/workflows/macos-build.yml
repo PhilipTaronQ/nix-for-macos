@@ -1,0 +1,188 @@
+name: macos-build
+
+# Build the store-free nix + the helper executables (git, ssh, lsof, bash)
+# against the staging prefix, run the full test ladder, gate on the
+# dynamic-link allowlist, and verify the artifact on CLEAN runners
+# (no Nix installed, /nix absent) across the deployment-target range.
+#
+# This workflow is the artifact producer. The staging-v1-* cache namespace
+# is shared with any dev-loop workflow that builds the same staging tree.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/macos-build.yml'
+      - 'packaging/**'
+      - '.github/build-nix.sh'
+      - '.github/run-tests.sh'
+      - 'src/**'
+      - 'flake.lock'
+      - 'flake.nix'
+      - 'meson.build'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install demoted Nix (source oracle)
+        uses: cachix/install-nix-action@8aa03977d8d733052d78f4e008a241fd1dbf36b3 # v31.10.6
+
+      - name: Install build tools (nix profile)
+        run: |
+          PIN=$(jq -r .nodes.nixpkgs.locked.rev flake.lock)
+          nix --extra-experimental-features "nix-command flakes" profile add \
+            "github:NixOS/nixpkgs/$PIN#meson" \
+            "github:NixOS/nixpkgs/$PIN#ninja" \
+            "github:NixOS/nixpkgs/$PIN#cmake" \
+            "github:NixOS/nixpkgs/$PIN#pkg-config" \
+            "github:NixOS/nixpkgs/$PIN#bison" \
+            "github:NixOS/nixpkgs/$PIN#flex" \
+            "github:NixOS/nixpkgs/$PIN#autoconf" \
+            "github:NixOS/nixpkgs/$PIN#automake" \
+            "github:NixOS/nixpkgs/$PIN#libtool" \
+            "github:NixOS/nixpkgs/$PIN#m4" \
+            "github:NixOS/nixpkgs/$PIN#bmake" \
+            "github:NixOS/nixpkgs/$PIN#jsonschema" \
+            "github:NixOS/nixpkgs/$PIN#doxygen" \
+            "github:NixOS/nixpkgs/$PIN#coreutils" \
+            "github:NixOS/nixpkgs/$PIN#gnused" \
+            "github:NixOS/nixpkgs/$PIN#gnugrep" \
+            "github:NixOS/nixpkgs/$PIN#gawk" \
+            "github:NixOS/nixpkgs/$PIN#findutils" \
+            "github:NixOS/nixpkgs/$PIN#diffutils" \
+            "github:NixOS/nixpkgs/$PIN#gnutar" \
+            "github:NixOS/nixpkgs/$PIN#jq"
+          echo "$HOME/.nix-profile/bin" >> "$GITHUB_PATH"
+          echo "ACLOCAL_PATH=$HOME/.nix-profile/share/aclocal" >> "$GITHUB_ENV"
+
+      - name: Restore staging cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: staging
+          key: staging-v1-${{ github.run_id }}
+          restore-keys: staging-v1-
+
+      # A dep failure here MUST fail the pipeline.
+      - name: Fetch-or-build dependencies
+        run: |
+          export STAGING=$PWD/staging
+          bash packaging/darwin/deps/build-all.sh
+
+      - name: Build nix
+        run: |
+          export STAGING=$PWD/staging
+          bash .github/build-nix.sh
+
+      - name: Test (json-schema, unit, functional)
+        run: |
+          export STAGING=$PWD/staging
+          bash .github/run-tests.sh --suite json-schema
+          bash .github/run-tests.sh --suite libutil-tests --suite libstore-tests \
+            --suite libexpr-tests --suite libfetchers-tests --suite libflake-tests
+          bash .github/run-tests.sh --suite main --suite flakes --suite ca \
+            --suite dyn-drv --suite git-hashing --suite libstoreconsumer
+
+      # Allowlist gate, strict, over every shipped Mach-O: only system
+      # dylibs and frameworks — nothing from a store path or homebrew.
+      - name: Gate — dynamic-link allowlist
+        run: |
+          check() {
+            otool -L "$1" | tail -n +2 | awk '{print $1}' | while read -r lib; do
+              case "$lib" in
+                /usr/lib/libSystem.B.dylib) ;;
+                /usr/lib/libc++.1.dylib) ;;
+                /usr/lib/libiconv.2.dylib) ;;
+                /usr/lib/libcharset.1.dylib) ;;
+                /usr/lib/libresolv.9.dylib) ;;
+                /System/Library/Frameworks/*) ;;
+                *) echo "ALLOWLIST VIOLATION in $1: $lib"; exit 1 ;;
+              esac
+            done
+          }
+          for b in /opt/nix/bin/nix /opt/nix/libexec/git/bin/git \
+                   /opt/nix/libexec/openssh/bin/ssh /opt/nix/libexec/lsof/bin/lsof \
+                   /opt/nix/libexec/bash/bin/bash \
+                   /opt/nix/libexec/git/libexec/git-core/git-remote-http; do
+            echo "checking $b"
+            check "$b"
+          done
+          echo "gate passed"
+
+      - name: Assemble dist
+        run: |
+          # /opt/nix was populated by build-nix.sh (one flavor,
+          # tested-as-shipped) — the artifact IS that tree. The daemon plist
+          # must NOT ship: nix-install writes its own at install time.
+          test ! -e /opt/nix/Library
+          tar -cf nix-macos-standalone.tar -C / opt/nix
+          shasum -a 256 nix-macos-standalone.tar
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: nix-macos-standalone-${{ github.sha }}
+          path: nix-macos-standalone.tar
+          if-no-files-found: error
+
+      - name: Save staging cache
+        if: always()
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: staging
+          key: staging-v1-${{ github.run_id }}
+
+  # The verification leg: the artifact must work on machines that
+  # have never seen Nix — no /nix, no demoted Nix, across the deployment
+  # range (MACOSX_DEPLOYMENT_TARGET=14.0 ⇒ macos-14 must work).
+  verify-clean:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-14, macos-15, macos-26]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: nix-macos-standalone-${{ github.sha }}
+
+      - name: Verify on a clean runner
+        run: |
+          test ! -e /nix && echo "/nix is absent — truly store-free run"
+          test ! -e /opt/nix && echo "/opt/nix absent before install"
+          mkdir dist && tar -xf nix-macos-standalone.tar -C dist
+          sudo ditto dist/opt/nix /opt/nix
+          N=/opt/nix/bin/nix
+          "$N" --version
+          echo "=== pure eval ==="
+          # Even pure eval opens a store, and store=auto wants /nix — which
+          # only the installer creates. Explicit --store on clean hosts.
+          "$N" --extra-experimental-features "nix-command flakes" \
+            --store /private/tmp/verify-store eval \
+            --expr 'builtins.hashString "sha256" "clean-runner"'
+          echo "=== store machinery ==="
+          echo smoke > /private/tmp/smoke
+          "$N" --extra-experimental-features nix-command \
+            --store /private/tmp/verify-store store add-file /private/tmp/smoke
+          echo "=== bundled git over https (via our curl + /etc/ssl trust) ==="
+          /opt/nix/libexec/git/bin/git ls-remote https://github.com/NixOS/nix HEAD | head -1
+          echo "=== nix -> bundled git at the BAKED path (fetchGit end to end) ==="
+          "$N" --extra-experimental-features "nix-command flakes" \
+            --store /private/tmp/verify-store eval --impure \
+            --expr 'toString (builtins.fetchGit { url = "https://github.com/lsof-org/lsof"; shallow = true; }).lastModified' | head -1
+          echo "=== helper versions ==="
+          /opt/nix/libexec/bash/bin/bash --version | head -1
+          /opt/nix/libexec/openssh/bin/ssh -V
+          echo "verify-clean passed on ${{ matrix.runner }}"
