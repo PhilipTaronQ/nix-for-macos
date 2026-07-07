@@ -32,5 +32,6 @@
   "libidn2",
   "aws-c-io",
   "libgit2",
-  "libarchive"
+  "libarchive",
+  "aws-c-http"
 ]
