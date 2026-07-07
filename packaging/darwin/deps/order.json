@@ -1,5 +1,6 @@
 [
   "zlib",
   "xz",
-  "bzip2"
+  "bzip2",
+  "zstd"
 ]
