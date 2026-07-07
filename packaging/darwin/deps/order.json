@@ -4,5 +4,6 @@
   "bzip2",
   "zstd",
   "lzo",
-  "pcre2"
+  "pcre2",
+  "openssl"
 ]
