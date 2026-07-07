@@ -25,5 +25,6 @@
   "aws-checksums",
   "aws-c-compression",
   "aws-c-sdkutils",
-  "aws-c-cal"
+  "aws-c-cal",
+  "ngtcp2"
 ]
