@@ -45,5 +45,6 @@
   "bashInteractive",
   "lsof",
   "openssh",
-  "git"
+  "git",
+  "gtest"
 ]
