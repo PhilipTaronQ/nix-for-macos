@@ -29,5 +29,6 @@
   "ngtcp2",
   "boost",
   "libxml2",
-  "libidn2"
+  "libidn2",
+  "aws-c-io"
 ]
