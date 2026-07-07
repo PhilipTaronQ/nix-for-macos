@@ -40,5 +40,6 @@
   "curl",
   "aws-c-s3",
   "aws-crt-cpp",
-  "ncurses"
+  "ncurses",
+  "readline"
 ]
