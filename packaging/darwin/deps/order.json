@@ -41,5 +41,6 @@
   "aws-c-s3",
   "aws-crt-cpp",
   "ncurses",
-  "readline"
+  "readline",
+  "bashInteractive"
 ]

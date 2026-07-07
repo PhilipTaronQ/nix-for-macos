@@ -32,6 +32,7 @@ let
   # /nix/store gettext path, which is why raw src stays the default).
   upstreamPatchSeries = [
     "readline" # 8.3p3: readline83-001..003 (+ two static-irrelevant build patches)
+    "bashInteractive" # 5.3p9: bash53-001..009 (+ pgrp-pipe)
   ];
 
   sources = lib.genAttrs names (
