@@ -18,5 +18,6 @@
   "libsodium",
   "nghttp3",
   "libunistring",
-  "sqlite"
+  "sqlite",
+  "toml11"
 ]
