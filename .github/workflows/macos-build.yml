@@ -15,11 +15,12 @@ on:
     branches: [master]
     paths:
       - '.github/workflows/macos-build.yml'
-      - '.github/deps/**'
+      - 'packaging/**'
       - '.github/build-nix.sh'
       - '.github/run-tests.sh'
       - 'src/**'
       - 'flake.lock'
+      - 'flake.nix'
       - 'meson.build'
 
 permissions:
@@ -78,7 +79,7 @@ jobs:
       - name: Fetch-or-build dependencies
         run: |
           export STAGING=$PWD/staging
-          bash .github/deps/build-all.sh
+          bash packaging/darwin/deps/build-all.sh
 
       - name: Build nix
         run: |

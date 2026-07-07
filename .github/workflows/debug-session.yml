@@ -39,7 +39,7 @@ on:
         type: boolean
         default: true
       auto-build:
-        description: Run .github/deps/build-all.sh (fetch-or-build) before the hold
+        description: Run packaging/darwin/deps/build-all.sh (fetch-or-build) before the hold
         type: boolean
         default: true
 
@@ -102,7 +102,7 @@ jobs:
           key: staging-v1-${{ github.run_id }}
           restore-keys: staging-v1-
 
-      # Fetch-or-build anything order.txt lists that the restored staging
+      # Fetch-or-build anything order.json lists that the restored staging
       # lacks. continue-on-error: a broken build.sh must not kill the session
       # — debugging it is what the session is for.
       - name: Fetch-or-build deps
@@ -111,7 +111,7 @@ jobs:
         run: |
           export PATH=/nix/var/nix/profiles/default/bin:$PATH
           export STAGING=$PWD/staging
-          bash .github/deps/build-all.sh
+          bash packaging/darwin/deps/build-all.sh
 
       # Tailscale provides the network path only; login is macOS's native sshd
       # below — no reliance on Tailscale SSH server support on macOS. The key

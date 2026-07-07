@@ -69,7 +69,7 @@ jobs:
       - name: Fetch-or-build dependencies
         run: |
           export STAGING=$PWD/staging
-          bash .github/deps/build-all.sh
+          bash packaging/darwin/deps/build-all.sh
 
       - name: Build nix
         run: |
