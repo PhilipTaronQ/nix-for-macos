@@ -10,9 +10,9 @@
 # bookkeeping. $SOURCES may point at a prebuilt manifest (build-all.sh
 # exports it); otherwise one flake build provisions it here.
 #
-# Normalizes the two shapes a `.src` can take (a tarball, or a
-# fetchFromGitHub directory — zstd is the latter) into a fresh, writable
-# <dest-dir>. Prints "<name> <version>".
+# Normalizes the shapes a `.src` can take (a tarball; a fetchFromGitHub
+# directory — zstd; a zip — sqlite) into a fresh, writable <dest-dir>.
+# Prints "<name> <version>".
 set -euo pipefail
 
 name=$1
@@ -33,7 +33,14 @@ if [ -d "$src" ]; then
     cp -R "$src/." "$dest/"
     chmod -R u+w "$dest"
 else
-    tar -xf "$src" -C "$dest" --strip-components=1
+    case "$src" in
+        *.zip)
+            # sqlite pins a zip; bsdtar (Apple's /usr/bin/tar) reads it —
+            # the GNU tar the tool stanza puts on PATH does not.
+            /usr/bin/tar -xf "$src" -C "$dest" --strip-components=1 ;;
+        *)
+            tar -xf "$src" -C "$dest" --strip-components=1 ;;
+    esac
 fi
 
 echo "$name $version"
