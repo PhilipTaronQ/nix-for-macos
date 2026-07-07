@@ -24,3 +24,16 @@ KNOBS=(
   LDFLAGS="-L$STAGING/lib -Wl,-search_paths_first"
 make -j"$(sysctl -n hw.ncpu)" "${KNOBS[@]}"
 make "${KNOBS[@]}" DESTDIR="$STAGING/payload" install
+
+# Slim the installed tree to Nix's actual usage — each of the curl-linked
+# helpers carries the full ~10MB static curl stack, and Nix execs exactly
+# one of them (documented divergences from a full git install):
+gitroot="$STAGING/payload/opt/nix/libexec/git"
+rm -f "$gitroot/libexec/git-core/git-imap-send"   # mail workflow
+rm -f "$gitroot/libexec/git-core/git-http-fetch"  # dumb-http walker; smart HTTP kept
+rm -f "$gitroot/libexec/git-core/scalar" "$gitroot/bin/scalar"
+rm -f "$gitroot/libexec/git-core/git-shell" "$gitroot/bin/git-shell"
+rm -f "$gitroot/libexec/git-core/git-daemon"      # server side
+rm -rf "$gitroot/share/man" "$gitroot/share/doc" "$gitroot/share/locale"
+# bin/git is a byte-identical copy of git-core/git: symlink it instead.
+ln -sf ../libexec/git-core/git "$gitroot/bin/git"

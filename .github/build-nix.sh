@@ -47,6 +47,12 @@ meson setup build --prefix=/opt/nix \
     ninja -C build -j"$(sysctl -n hw.ncpu)"
     meson install -C build --destdir "$PAYLOAD"
 
+# Slim the payload: the .pkg is a runtime artifact (§11.2a). Dev headers,
+# static component archives + pkg-config, and the unit-test executables
+# meson installs all stay in the build tree only.
+rm -rf "$PAYLOAD/opt/nix/include" "$PAYLOAD/opt/nix/lib"
+rm -f "$PAYLOAD/opt/nix/bin/"nix-*-tests
+
 # Populate the REAL /opt/nix so the baked absolute paths resolve during the
 # test ladder (one build flavor: what ships is what's tested — §11.2a). The
 # runner is ephemeral; sudo is passwordless.

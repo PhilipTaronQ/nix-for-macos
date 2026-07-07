@@ -9,3 +9,8 @@ set -euo pipefail
   CPPFLAGS="-I$STAGING/include" LDFLAGS="-L$STAGING/lib -Wl,-search_paths_first"
 make -j"$(sysctl -n hw.ncpu)"
 make DESTDIR="$STAGING/payload" install
+
+# Runtime artifact: translations and documentation stay out of the payload.
+bashroot="$STAGING/payload/opt/nix/libexec/bash"
+rm -rf "$bashroot/share/locale" "$bashroot/share/man" \
+       "$bashroot/share/doc" "$bashroot/share/info"
