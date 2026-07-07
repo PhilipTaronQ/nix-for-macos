@@ -22,5 +22,6 @@
   "toml11",
   "nghttp2",
   "s2n-tls",
-  "aws-checksums"
+  "aws-checksums",
+  "aws-c-compression"
 ]
