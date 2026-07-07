@@ -46,5 +46,6 @@
   "lsof",
   "openssh",
   "git",
-  "gtest"
+  "gtest",
+  "rapidcheck"
 ]
