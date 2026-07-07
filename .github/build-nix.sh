@@ -37,6 +37,7 @@ meson setup build --prefix="$NIX_OUT" \
       -Dunit-tests=true -Dfunctional-tests=true -Ddoc-gen=false -Djson-schema-checks=true \
       -Dlibstore:s3-aws-auth=enabled \
       -Dlibstore:embedded-sandbox-shell=false \
-      -Dlibcmd:markdown=enabled
+      -Dlibcmd:markdown=enabled \
+  -Dlibfetchers:mercurial-fetcher=false
     ninja -C build -j"$(sysctl -n hw.ncpu)"
     meson install -C build
