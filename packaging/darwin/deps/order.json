@@ -39,5 +39,6 @@
   "aws-c-mqtt",
   "curl",
   "aws-c-s3",
-  "aws-crt-cpp"
+  "aws-crt-cpp",
+  "ncurses"
 ]
