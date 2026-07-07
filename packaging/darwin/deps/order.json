@@ -16,5 +16,6 @@
   "lowdown",
   "llhttp",
   "libsodium",
-  "nghttp3"
+  "nghttp3",
+  "libunistring"
 ]
