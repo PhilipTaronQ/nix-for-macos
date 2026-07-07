@@ -228,6 +228,16 @@ final class ServiceActionsTests: XCTestCase {
             "nix-darwin owns this\n", "symlinked shell files are never touched")
     }
 
+    // MARK: ManPathsD
+
+    func testManPathsDRoundTrip() throws {
+        try ManPathsD().apply(ctx)
+        let url = root.appendingPathComponent("etc/manpaths.d/nix")
+        XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), "/opt/nix/share/man\n")
+        try ManPathsD().revert(ctx)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
+    }
+
     // MARK: Payload
 
     func testPayloadCopiesFromSourceAndRevertRemoves() throws {

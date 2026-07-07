@@ -61,6 +61,7 @@ enum Action: Codable {
     case payload(Payload)
     case nixConf(NixConf)
     case pathsD(PathsD)
+    case manPathsD(ManPathsD)
     case shellInit(ShellInit)
     case daemonService(DaemonService)
     case selfHealService(SelfHealService)
@@ -79,6 +80,7 @@ enum Action: Codable {
         case .payload(let a): return a.summary
         case .nixConf(let a): return a.summary
         case .pathsD(let a): return a.summary
+        case .manPathsD(let a): return a.summary
         case .shellInit(let a): return a.summary
         case .daemonService(let a): return a.summary
         case .selfHealService(let a): return a.summary
@@ -90,7 +92,7 @@ enum Action: Codable {
     /// deliberate reinstall.
     var isRepairable: Bool {
         switch self {
-        case .syntheticConf, .nixConf, .pathsD, .shellInit: return true
+        case .syntheticConf, .nixConf, .pathsD, .manPathsD, .shellInit: return true
         default: return false
         }
     }
@@ -109,6 +111,7 @@ enum Action: Codable {
         case .payload(let a): return try a.isAlreadyDone(ctx)
         case .nixConf(let a): return try a.isAlreadyDone(ctx)
         case .pathsD(let a): return try a.isAlreadyDone(ctx)
+        case .manPathsD(let a): return try a.isAlreadyDone(ctx)
         case .shellInit(let a): return try a.isAlreadyDone(ctx)
         case .daemonService(let a): return try a.isAlreadyDone(ctx)
         case .selfHealService(let a): return try a.isAlreadyDone(ctx)
@@ -135,6 +138,7 @@ enum Action: Codable {
         case .payload(let a): try a.apply(ctx)
         case .nixConf(let a): try a.apply(ctx)
         case .pathsD(let a): try a.apply(ctx)
+        case .manPathsD(let a): try a.apply(ctx)
         case .shellInit(let a): try a.apply(ctx)
         case .daemonService(let a): try a.apply(ctx)
         case .selfHealService(let a): try a.apply(ctx)
@@ -155,6 +159,7 @@ enum Action: Codable {
         case .payload(let a): try a.revert(ctx)
         case .nixConf(let a): try a.revert(ctx)
         case .pathsD(let a): try a.revert(ctx)
+        case .manPathsD(let a): try a.revert(ctx)
         case .shellInit(let a): try a.revert(ctx)
         case .daemonService(let a): try a.revert(ctx)
         case .selfHealService(let a): try a.revert(ctx)
@@ -177,6 +182,7 @@ func defaultPlan(payloadSource: String? = nil) -> [Action] {
         .payload(Payload(source: payloadSource)),
         .nixConf(NixConf()),
         .pathsD(PathsD()),
+        .manPathsD(ManPathsD()),
         .shellInit(ShellInit()),
         .daemonService(DaemonService()),
         .selfHealService(SelfHealService()),

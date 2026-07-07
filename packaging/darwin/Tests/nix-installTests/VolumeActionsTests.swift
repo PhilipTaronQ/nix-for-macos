@@ -284,7 +284,7 @@ final class VolumeActionsTests: XCTestCase {
         try engine.install(plan: defaultPlan(payloadSource: src.path))
 
         let ledger = try LedgerStore(root: root).load()
-        XCTAssertEqual(ledger.actions.count, 15)
+        XCTAssertEqual(ledger.actions.count, 16)
         let states = ledger.actions.map(\.state)
         XCTAssertFalse(states.contains(.uncompleted), "everything applied or skipped")
         guard case .apfsVolume(let vol) = ledger.actions[2].action else {
@@ -298,7 +298,7 @@ final class VolumeActionsTests: XCTestCase {
         try engine.uninstall()
         XCTAssertFalse(LedgerStore(root: root).exists)
         for path in [
-            "/etc/fstab", "/etc/paths.d/nix", "/etc/nix/nix.conf", "/opt/nix",
+            "/etc/fstab", "/etc/paths.d/nix", "/etc/manpaths.d/nix", "/etc/nix/nix.conf", "/opt/nix",
             DaemonService.installedPlist, VolumeMountService.plistPath,
             SelfHealService.plistPath,
         ] {

@@ -39,7 +39,8 @@ meson setup build --prefix=/opt/nix \
       "-Dcpp_link_args=-framework Network -framework Security -mmacosx-version-min=14.0" \
       "-Dcpp_args=-isystem $STAGING/include -mmacosx-version-min=14.0" \
       "-Dc_args=-isystem $STAGING/include -mmacosx-version-min=14.0" \
-      -Dunit-tests=true -Dfunctional-tests=true -Ddoc-gen=false -Djson-schema-checks=true \
+      -Dunit-tests=true -Dfunctional-tests=true -Ddoc-gen=true -Djson-schema-checks=true \
+  -Dnix-manual:html-manual=false \
       -Dlibstore:s3-aws-auth=enabled \
       -Dlibstore:embedded-sandbox-shell=false \
       -Dlibcmd:markdown=enabled \
@@ -51,6 +52,7 @@ meson setup build --prefix=/opt/nix \
 # static component archives + pkg-config, and the unit-test executables
 # meson installs all stay in the build tree only.
 rm -rf "$PAYLOAD/opt/nix/include" "$PAYLOAD/opt/nix/lib"
+rm -rf "$PAYLOAD/opt/nix/share/doc"  # api/dev docs; man pages stay
 rm -f "$PAYLOAD/opt/nix/bin/"nix-*-tests
 
 # Populate the REAL /opt/nix so the baked absolute paths resolve during the
