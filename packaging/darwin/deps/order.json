@@ -23,5 +23,6 @@
   "nghttp2",
   "s2n-tls",
   "aws-checksums",
-  "aws-c-compression"
+  "aws-c-compression",
+  "aws-c-sdkutils"
 ]
