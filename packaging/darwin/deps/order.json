@@ -13,5 +13,6 @@
   "libev",
   "libblake3",
   "aws-c-common",
-  "lowdown"
+  "lowdown",
+  "llhttp"
 ]
