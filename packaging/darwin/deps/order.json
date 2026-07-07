@@ -31,5 +31,6 @@
   "libxml2",
   "libidn2",
   "aws-c-io",
-  "libgit2"
+  "libgit2",
+  "libarchive"
 ]
