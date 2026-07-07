@@ -7,5 +7,6 @@
   "pcre2",
   "openssl",
   "boehmgc",
-  "brotli"
+  "brotli",
+  "nlohmann_json"
 ]
