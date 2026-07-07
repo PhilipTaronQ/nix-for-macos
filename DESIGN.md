@@ -568,30 +568,111 @@ Dependency unit tests are skipped throughout (§4).
 ## 11. Install (`.pkg` + Swift app)
 
 The `.pkg` runs a small Swift program that performs the install — a port of
-NixOS/nix-installer (Rust) minus the ceremony. It keeps the
-**receipt/ledger** concept (the genuinely valuable part of nix-installer),
-so every action has a matching removal path for clean uninstall:
+NixOS/nix-installer (Rust) minus the ceremony. Salvage analysis of the Rust
+installer (local checkout `~/Code/github.com/NixOS/nix-installer`; file
+pointers below refer to it) informs everything in this section.
 
-- Swift app scaffolding (written)
-- **Build users** (`_nixbld*`) — add / remove
-- **Shell init** (`bashrc` / `zshrc`) entries — add / remove
-- **APFS volume** for `/nix` — add / remove (the root FS is read-only; the
-  mount point is created via an `/etc/synthetic.conf` firmlink)
-- **launchctl** service for `nix-daemon` — add / remove
-- **`/etc/nix/nix.conf`** and install-time configuration. Trick: the default
-  `nix.conf` contains **only** `!include nix.install.conf`, and all
-  install-time configuration (including `experimental-features = nix-command
-  flakes`) lands in `nix.install.conf`. This keeps upstream's `nix.conf`
-  pristine and lets uninstall preserve user config.
+### 11.1 Receipt model (the part ported faithfully)
 
-Every item above still needs its own detailed breakdown.
+A versioned `receipt.json` at `/nix/receipt.json`: a **flat, ordered list of
+actions**, each a Swift `Codable` value carrying its captured parameters
+(disk, UUID, plist text, …) plus a state: `uncompleted` / `completed` /
+`skipped` (skipped = detected already-done at plan time; never reverted).
+
+- **Install**: iterate forward, fail-fast, **persist the receipt after every
+  step including on failure** — a half-applied install stays reversible
+  (`src/plan.rs:175-194` upstream).
+- **Uninstall**: decode the receipt, replay in **reverse, best-effort** —
+  collect errors and keep reverting (`src/plan.rs:283-319`).
+- Simplifications vs Rust: no typetag/dyn-Action machinery (fixed action
+  set ⇒ enum with a `type` discriminator), no composite/`Progress` state
+  (flatten to leaf actions).
+- Some actions have legitimately empty reverts (`enableOwnership`); the
+  add+remove *shape* is universal, symmetry is not.
+
+### 11.2 Action list (install order; uninstall is the exact reverse)
+
+1. **synthetic.conf**: append `nix\n` — the trailing newline is load-bearing
+   (apfs.util segfaults without it; `create_nix_volume.rs:59`).
+2. **Materialize firmlink without reboot**: run BOTH `apfs.util -t` and
+   `-B`, ignoring their exit codes (`create_synthetic_objects.rs`).
+3. **Create APFS volume**: `diskutil apfs addVolume <disk> APFS Nix
+   -nomount`, then **poll `diskutil info -plist`** until the volume is
+   queryable — creation is async (`create_nix_volume.rs:174-196`).
+4. **fstab entry, keyed by UUID never by name** (upstream issue #212):
+   `UUID=<uuid> /nix apfs rw,noatime,noauto,nobrowse,nosuid,owners`.
+5. **FileVault encryption — IN (decided 2026-07-06)**: generate a 32-char
+   password; store in `/Library/Keychains/System.keychain` via `security
+   add-generic-password` with a `-T` ACL for `APFSUserAgent`, `CSUserAgent`,
+   `security` (that ACL is what makes boot-unlock work); `diskutil apfs
+   encryptVolume … -stdinpassphrase`. Gate on `fdesetup isactive` or offer
+   as install option. Never force-unmount a volume already mounted at
+   `/nix` — live mmaps ⇒ SIGBUS (`encrypt_apfs_volume.rs:263-291`).
+6. **`org.nixos.darwin-store` LaunchDaemon** — the boot remount, without
+   which `/nix` vanishes at reboot. `RunAtLoad`; encrypted variant pipes
+   `security find-generic-password` into `diskutil apfs unlockVolume
+   -stdinpassphrase`. Bootstrap + kickstart, then **poll `/nix` mounted**
+   (up to ~15 s; the boot-race pattern, `mod.rs:116-140`).
+7. **`diskutil enableOwnership /nix`** (empty revert).
+8. **Build group + users**: `dseditgroup` / `dscl`; **UID/GID base 350**
+   (Sequoia-safe; macOS 15 squatted the old 300 range), `_nixbld1…32`,
+   `IsHidden=1`, shell `/sbin/nologin`, home `/var/empty`. `dscl` create is
+   flaky — retry on `eNotYetImplemented`/SIGKILL; create sequentially (dscl
+   is not thread-safe). On uninstall, tolerate user-delete failures on
+   ephemeral/CI Macs (no secure token).
+9. **Time Machine exclusions**: `tmutil addexclusion` on `/nix/store` and
+   `/nix/var` (the volume itself needs Full Disk Access — exclude subdirs).
+10. **Payload**: copy the `macos-build.yml` artifact (nix binaries +
+    helpers) into place. Layout: see the open §14 item.
+11. **nix.conf**: pristine `/etc/nix/nix.conf` containing only
+    `!include nix.install.conf`; all managed settings (including
+    `experimental-features = nix-command flakes`) in `nix.install.conf`.
+    **Deliberately inverted from DetSys** (they manage `nix.conf` and
+    `!include nix.custom.conf` for the user): our inversion keeps the
+    user-owned file survivable across uninstall and upstream's filename
+    unclaimed.
+12. **Shell init**: `# Nix` / `# End Nix` markered fragments in
+    `/etc/bashrc` + `/etc/zshrc` (+ fish confs); atomic temp-file swap;
+    revert removes the exact fragment. **Never write through a symlink**
+    (nix-darwin owns those files then).
+13. **nix-daemon LaunchDaemon**: we author
+    `/Library/LaunchDaemons/org.nixos.nix-daemon.plist` (upstream copies it
+    from the Nix tarball — our artifact must supply or the installer must
+    embed it). Modern `launchctl bootstrap` + `enable` + `kickstart -k`,
+    never legacy `load`. On teardown: bootout, **poll until `launchctl
+    print` fails**, delete plist, and **manually unlink
+    `/var/run/nix-daemon.socket`** (launchd leaves stale sockets).
+14. **Self-heal LaunchDaemon — IN (decided 2026-07-06)**: macOS updates
+    wipe `/etc/zshrc` et al.; install a `wait4path <installer> && <installer>
+    repair` daemon (`KeepAlive.SuccessfulExit=false`) that re-applies the
+    shell-init actions. `repair` = re-run idempotent actions from the
+    receipt.
+
+### 11.3 Open subquestions
+
+- **Installer binary residence**: DetSys keeps it at `/nix/nix-installer`
+  (self-heal via `wait4path`), which forces the copy-self-to-tmp-and-exec
+  dance at uninstall. Putting ours outside `/nix` (e.g.
+  `/usr/local/lib/nix-installer/`) avoids that; decide with the payload
+  layout (§14).
+- Volume delete/unmount races: `unmount force` before `deleteVolume`,
+  retried ~10× (upstream issues #647/#1085/#1267/#1303).
+- On uninstall, **never delete the keychain password if volume deletion
+  failed** — don't strand an encrypted volume without its key
+  (`create_nix_volume.rs:280-289`).
+- MDM "Restrictions – Media" profiles block internal-volume mounting
+  (upstream's `check_suis` pre-flight) — port the check or document.
 
 ## 12. Uninstall
 
+- Mechanism: reverse-replay of the receipt, best-effort (§11.1) — one
+  failed revert never strands the rest.
 - Define precisely what **clean** means.
 - Likely offer an **option to keep `/nix` and `nix.conf`** — the `!include`
   trick makes this natural (user config in `nix.conf` survives; our
   `nix.install.conf` is removed).
+- Known-tolerable failures: `dscl` user deletion on ephemeral/CI Macs;
+  keychain entry retained deliberately when volume deletion fails (§11.3).
 
 ## 13. Upgrade (deferred)
 
