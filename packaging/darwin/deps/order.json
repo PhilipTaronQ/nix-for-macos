@@ -19,5 +19,6 @@
   "nghttp3",
   "libunistring",
   "sqlite",
-  "toml11"
+  "toml11",
+  "nghttp2"
 ]
