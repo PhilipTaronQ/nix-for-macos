@@ -282,7 +282,7 @@ Inventory, from auditing every `runProgram`/`exec` call site:
 | `ssh` | SSH stores / remote builders, git-lfs over ssh | ⚠️ /usr/bin/ssh | **bundle**, client-sliced (§7.2) |
 | `lsof` | GC: find processes holding roots | ⚠️ /usr/sbin/lsof | **bundle** (§7.2) |
 | `bash` / `/bin/sh` | pager, `nix develop` / `nix-shell -i`, remote `SHELL` | ⚠️ Apple bash 3.2 | **bundle** for the interactive fallback (§7.2) |
-| `hg` | mercurial fetcher | ✗ opt-in install | **CUT** via patch, with sentinel error (§7.3) |
+| `hg` | mercurial fetcher | ✗ opt-in install | **CUT** via build option, with sentinel error (§7.3) |
 | own `nix`/`nix-env`, derivation builders, user hooks | channels, upgrade, builds | ✓ | fine — our binary, store paths, or the user's choice |
 
 Two things we do *not* need to bundle, confirmed from source:
@@ -292,10 +292,12 @@ Two things we do *not* need to bundle, confirmed from source:
   `sandbox-exec` binary.
 - **Unpacking is libarchive**, not a `tar` shell-out.
 
-All bundled executables are invoked by **absolute install path**: Nix is
-patched at build time so `runProgram("git"…)` (likewise `ssh`, `lsof`) resolves
-to our installed binary rather than a `PATH` lookup. Patches live in
-`.github/nix/*.patch`.
+All bundled executables are invoked by **absolute install path**:
+`runProgram("git"…)` (likewise `ssh`, `lsof`, and the interactive-shell
+fallback) resolves to our installed binary rather than a `PATH` lookup.
+Mechanism: **meson options committed directly to `src/`** (defaulting to
+today's PATH-lookup behavior), not patch files — see §11.3; this fork aims
+upstream, and options are reviewable where patches are invisible.
 
 ### 7.1 git — bundle our own (decided)
 
@@ -374,8 +376,9 @@ link dependencies after slicing, (3) what *it* shells out to.
 
 ### 7.3 hg — cut (decided)
 
-Bundling mercurial would mean bundling Python plus ~20 libraries. Instead we
-**patch out the mercurial input-scheme registration**, so any `hg://` input
+Bundling mercurial would mean bundling Python plus ~20 libraries. Instead
+the mercurial input scheme goes behind a **meson feature option** (default:
+enabled, i.e. today's behavior; our build disables it), so any `hg://` input
 yields an explicit *"mercurial support not included in this build"* error.
 (The fetcher already sets `HGPLAIN`, so there is no user-`.hgrc` isolation
 issue to solve.)
@@ -387,7 +390,7 @@ must produce a clear **"… not included in this build"** error, never a
 confusing failure like `hg: command not found`. The explicit error is a
 sentinel: it surfaces every use of an excluded feature in the wild, and it
 marks exactly where a future contributor (one with the audacity to package
-`hg`) would remove the patch to opt back in.
+`hg`) would flip the option back on.
 
 ## 8. TLS trust store — resolved
 
@@ -678,7 +681,33 @@ detected already-done at plan time; never reverted).
     shell-init actions. `repair` = re-run idempotent actions from the
     receipt.
 
-### 11.3 Open subquestions
+### 11.3 Code layout (information architecture)
+
+Each piece lives according to **where it is going**:
+
+- **`packaging/darwin/`** — the Swift installer, self-contained: upstream
+  already hosts installer material here (`packaging/installer/install.in`,
+  `packaging/rust-installer/`), so this is the natural third sibling.
+  Structure: `Package.swift`, `README.md`, `Sources/nix-install/`
+  (`Ledger.swift`, one file per §11.2 action under `Actions/`, tool
+  wrappers with retry logic under `Support/`), `Tests/`, and `pkg/`
+  (pkgbuild/productbuild assembly, invoked by `macos-build.yml` — the
+  `.pkg` build is the installer's build system, not CI infrastructure).
+- **launchd plists split by author**: `misc/launchd/
+  org.nixos.nix-daemon.plist.in` is upstream's file and the dist artifact
+  must carry it (currently a gap in the assemble step). The darwin-store
+  and self-heal plists have dynamic parameters (volume UUID,
+  encrypted-variant argv) and are generated in Swift, DetSys-style.
+- **Helper exec paths are meson options in `src/`, not patches**: a fork
+  aiming upstream expresses the §7 absolute paths (git/ssh/lsof, the
+  interactive-shell fallback) and the mercurial sentinel as reviewable
+  build options defaulting to today's behavior — committed directly, per
+  the direct-commit policy. `.patch` files are reserved for changes
+  upstream would genuinely refuse; as of this writing there are none.
+- **Build knowledge stays in `.github/`** (ships nowhere); **DESIGN.md and
+  `bom/` stay on the design branch** (fork process, not product).
+
+### 11.4 Open subquestions
 
 - **Installer binary residence**: DetSys keeps it at `/nix/nix-installer`
   (self-heal via `wait4path`), which forces the copy-self-to-tmp-and-exec
