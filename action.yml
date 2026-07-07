@@ -1,0 +1,66 @@
+name: 'Install Nix (macOS standalone)'
+description: >
+  Install Nix on a macOS arm64 runner from the standalone .pkg release —
+  store-free binaries, no bootstrap tarball, ledger-backed uninstall.
+branding:
+  icon: 'package'
+  color: 'blue'
+
+inputs:
+  version:
+    description: >
+      Release version to install (e.g. "2.35.0"), or "latest". Pin a
+      version for reproducible workflows.
+    required: false
+    default: 'latest'
+  sha256:
+    description: >
+      Expected SHA-256 of the .pkg. Strongly recommended alongside a
+      pinned version: this is a trust anchor independent of the release
+      contents. When empty, the checksums.txt published with the release
+      is used instead (self-consistency only).
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Install Nix from the .pkg release
+      shell: bash
+      env:
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_SHA256: ${{ inputs.sha256 }}
+      run: |
+        set -euo pipefail
+        if [ "$(uname -sm)" != "Darwin arm64" ]; then
+          echo "::error::this action supports macOS arm64 runners only (got: $(uname -sm))"
+          exit 1
+        fi
+        repo="${GITHUB_ACTION_REPOSITORY:-PhilipTaronQ/nix-for-macos}"
+
+        if [ "$INPUT_VERSION" = "latest" ]; then
+          url=$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" \
+            | jq -r '.assets[] | select(.name | endswith(".pkg")) | .browser_download_url' | head -1)
+          checksums_url=$(curl -fsSL "https://api.github.com/repos/$repo/releases/latest" \
+            | jq -r '.assets[] | select(.name == "checksums.txt") | .browser_download_url' | head -1)
+        else
+          base="https://github.com/$repo/releases/download/v$INPUT_VERSION"
+          url="$base/nix-$INPUT_VERSION-aarch64-darwin.pkg"
+          checksums_url="$base/checksums.txt"
+        fi
+        echo "downloading: $url"
+        curl -fsSL --retry 3 -o /tmp/nix-standalone.pkg "$url"
+
+        if [ -n "$INPUT_SHA256" ]; then
+          echo "$INPUT_SHA256  /tmp/nix-standalone.pkg" | shasum -a 256 -c -
+        elif [ -n "${checksums_url:-}" ] && curl -fsSL -o /tmp/nix-checksums.txt "$checksums_url"; then
+          grep "$(basename "$url")" /tmp/nix-checksums.txt \
+            | sed "s|  .*|  /tmp/nix-standalone.pkg|" | shasum -a 256 -c -
+        else
+          echo "::warning::no sha256 input and no checksums.txt on the release; skipping verification"
+        fi
+
+        sudo installer -pkg /tmp/nix-standalone.pkg -target /
+        echo "/opt/nix/bin" >> "$GITHUB_PATH"
+        /opt/nix/bin/nix --version
+        echo "Nix installed; uninstall with: sudo /opt/nix/libexec/nix-install uninstall"

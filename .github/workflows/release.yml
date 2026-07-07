@@ -1,0 +1,229 @@
+name: release
+
+# Tag-time pipeline with bootstrap discipline (the exhaust-sniffing rules):
+#   1. The gate stays upstream of the exhaust: everything is built from
+#      source and must pass the full ladder + the pkg-level install smoke
+#      on ALL THREE macOS generations BEFORE anything is published.
+#   2. Releases are immutable and checksummed; consumers (the composite
+#      action) pin versions + sha256. A bad release means "pin the
+#      previous tag", never "the pipeline is bricked".
+#   3. After publish, action-smoke consumes the just-published release
+#      through the action itself — the first sniff of our own exhaust,
+#      taken deliberately and downstream of all gates.
+#
+# workflow_dispatch runs build + verify-pkg only (a dry run, no publish).
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Install demoted Nix (source oracle)
+        uses: cachix/install-nix-action@8aa03977d8d733052d78f4e008a241fd1dbf36b3 # v31.10.6
+
+      - name: Install build tools (nix profile)
+        run: |
+          PIN=$(jq -r .nodes.nixpkgs.locked.rev flake.lock)
+          nix --extra-experimental-features "nix-command flakes" profile add \
+            "github:NixOS/nixpkgs/$PIN#meson" \
+            "github:NixOS/nixpkgs/$PIN#ninja" \
+            "github:NixOS/nixpkgs/$PIN#cmake" \
+            "github:NixOS/nixpkgs/$PIN#pkg-config" \
+            "github:NixOS/nixpkgs/$PIN#bison" \
+            "github:NixOS/nixpkgs/$PIN#flex" \
+            "github:NixOS/nixpkgs/$PIN#autoconf" \
+            "github:NixOS/nixpkgs/$PIN#automake" \
+            "github:NixOS/nixpkgs/$PIN#libtool" \
+            "github:NixOS/nixpkgs/$PIN#m4" \
+            "github:NixOS/nixpkgs/$PIN#bmake" \
+            "github:NixOS/nixpkgs/$PIN#jsonschema" \
+            "github:NixOS/nixpkgs/$PIN#doxygen" \
+            "github:NixOS/nixpkgs/$PIN#coreutils" \
+            "github:NixOS/nixpkgs/$PIN#gnused" \
+            "github:NixOS/nixpkgs/$PIN#gnugrep" \
+            "github:NixOS/nixpkgs/$PIN#gawk" \
+            "github:NixOS/nixpkgs/$PIN#findutils" \
+            "github:NixOS/nixpkgs/$PIN#diffutils" \
+            "github:NixOS/nixpkgs/$PIN#gnutar" \
+            "github:NixOS/nixpkgs/$PIN#jq"
+          echo "$HOME/.nix-profile/bin" >> "$GITHUB_PATH"
+          echo "ACLOCAL_PATH=$HOME/.nix-profile/share/aclocal" >> "$GITHUB_ENV"
+
+      - name: Restore staging cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: staging
+          key: staging-v1-${{ github.run_id }}
+          restore-keys: staging-v1-
+
+      - name: Fetch-or-build dependencies
+        run: |
+          export STAGING=$PWD/staging
+          bash .github/deps/build-all.sh
+
+      - name: Build nix
+        run: |
+          export STAGING=$PWD/staging
+          bash .github/build-nix.sh
+
+      - name: Test (json-schema, unit, functional)
+        run: |
+          export STAGING=$PWD/staging
+          bash .github/run-tests.sh --suite json-schema
+          bash .github/run-tests.sh --suite libutil-tests --suite libstore-tests \
+            --suite libexpr-tests --suite libfetchers-tests --suite libflake-tests
+          bash .github/run-tests.sh --suite main --suite flakes --suite ca \
+            --suite dyn-drv --suite git-hashing --suite libstoreconsumer
+
+      - name: Gate — dynamic-link allowlist
+        run: |
+          check() {
+            otool -L "$1" | tail -n +2 | awk '{print $1}' | while read -r lib; do
+              case "$lib" in
+                /usr/lib/libSystem.B.dylib) ;;
+                /usr/lib/libc++.1.dylib) ;;
+                /usr/lib/libiconv.2.dylib) ;;
+                /usr/lib/libcharset.1.dylib) ;;
+                /usr/lib/libresolv.9.dylib) ;;
+                /System/Library/Frameworks/*) ;;
+                *) echo "ALLOWLIST VIOLATION in $1: $lib"; exit 1 ;;
+              esac
+            done
+          }
+          for b in /opt/nix/bin/nix /opt/nix/libexec/git/libexec/git-core/git \
+                   /opt/nix/libexec/openssh/bin/ssh /opt/nix/libexec/lsof/bin/lsof \
+                   /opt/nix/libexec/bash/bin/bash; do
+            echo "checking $b"; check "$b"
+          done
+
+      - name: Installer engine — swift test + release build
+        run: |
+          cd packaging/darwin
+          swift test
+          swift build -c release
+
+      - name: Assemble the .pkg
+        id: pkg
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="$(cat .version)-dry$(date +%s)"
+          fi
+          BIN=$(cd packaging/darwin && swift build -c release --show-bin-path)/nix-install
+          bash packaging/darwin/pkg/build-pkg.sh /opt/nix "$BIN" "$VERSION" \
+            "nix-$VERSION-aarch64-darwin.pkg"
+          shasum -a 256 "nix-$VERSION-aarch64-darwin.pkg" > checksums.txt
+          cat checksums.txt
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pkg-${{ github.sha }}
+          path: |
+            nix-*.pkg
+            checksums.txt
+          if-no-files-found: error
+    outputs:
+      version: ${{ steps.pkg.outputs.version }}
+
+  # The pkg-level lifecycle, on clean runners of every supported generation:
+  # install → daemon → REAL BUILD via the build users → substitution from
+  # cache.nixos.org (the whole trust/curl/compression stack) → man pages →
+  # ledger-backed uninstall, forensically checked.
+  verify-pkg:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-14, macos-15, macos-26]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: pkg-${{ github.sha }}
+
+      - name: Full lifecycle on a clean runner
+        run: |
+          test ! -e /nix && test ! -e /opt/nix && echo "pristine"
+          shasum -a 256 -c checksums.txt
+          sudo installer -pkg nix-*.pkg -target /
+          N=/opt/nix/bin/nix
+          "$N" --version
+          echo "=== daemon build via _nixbld users ==="
+          OUT=$("$N" --extra-experimental-features nix-command build --no-link \
+            --print-out-paths --expr "
+              derivation { name = \"release-smoke\"; system = \"aarch64-darwin\";
+                builder = \"/opt/nix/libexec/bash/bin/bash\";
+                args = [ \"-c\" \"echo verified > \$out\" ]; }")
+          cat "$OUT"
+          echo "=== substitution from cache.nixos.org (a real project) ==="
+          PIN=$(curl -fsSL "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/flake.lock" | jq -r '.nodes.nixpkgs.locked.rev')
+          "$N" --extra-experimental-features "nix-command flakes" build --no-link \
+            --max-jobs 0 "github:NixOS/nixpkgs/$PIN#hello"
+          "$N" --extra-experimental-features "nix-command flakes" shell \
+            "github:NixOS/nixpkgs/$PIN#hello" -c hello
+          echo "=== man pages ==="
+          man -w nix-store && man 5 nix.conf | head -3
+          echo "=== ledger uninstall, forensic check ==="
+          sudo /opt/nix/libexec/nix-install uninstall
+          for p in /opt/nix /etc/nix /etc/paths.d/nix /etc/manpaths.d/nix \
+                   /Library/LaunchDaemons/org.nixos.nix-daemon.plist; do
+            test ! -e "$p" || { echo "REMAINS: $p"; exit 1; }
+          done
+          dscl . -read /Groups/nixbld >/dev/null 2>&1 && exit 1 || true
+          diskutil info Nix >/dev/null 2>&1 && exit 1 || echo "forensically clean"
+
+  # Publish only after every generation verified — and only on real tags.
+  publish:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build, verify-pkg]
+    runs-on: macos-26
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: pkg-${{ github.sha }}
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --repo "${{ github.repository }}" \
+            --title "Nix ${GITHUB_REF_NAME#v} (macOS standalone)" \
+            --notes "Store-free Nix for macOS arm64. Install: \`sudo installer -pkg nix-*.pkg -target /\` or use the GitHub Action. Uninstall: \`sudo /opt/nix/libexec/nix-install uninstall\`. Checksums attached." \
+            nix-*.pkg checksums.txt
+
+  # The first sniff of our own exhaust — deliberately downstream of every
+  # gate: consume the JUST-PUBLISHED release through the composite action.
+  action-smoke:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build, publish]
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Install via our own action, from the release
+        uses: ./
+        with:
+          version: ${{ needs.build.outputs.version }}
+      - name: Prove it (Milestone 3)
+        run: |
+          nix --version
+          PIN=$(jq -r '.nodes.nixpkgs.locked.rev' flake.lock)
+          nix --extra-experimental-features "nix-command flakes" build --no-link \
+            --max-jobs 0 "github:NixOS/nixpkgs/$PIN#hello"
+          nix --extra-experimental-features "nix-command flakes" shell \
+            "github:NixOS/nixpkgs/$PIN#hello" -c hello
