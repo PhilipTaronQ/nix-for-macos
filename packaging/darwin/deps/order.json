@@ -26,5 +26,6 @@
   "aws-c-compression",
   "aws-c-sdkutils",
   "aws-c-cal",
-  "ngtcp2"
+  "ngtcp2",
+  "boost"
 ]
