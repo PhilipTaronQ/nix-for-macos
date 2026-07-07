@@ -681,6 +681,49 @@ detected already-done at plan time; never reverted).
     shell-init actions. `repair` = re-run idempotent actions from the
     receipt.
 
+### 11.2a Payload layout — `/opt/nix` (decided 2026-07-06)
+
+Not an application (no Trash-drag uninstall contract to honor ⇒ not
+`/Applications`); a Unix toolchain + system daemon, vendor-distributed.
+Precedent for `.pkg` → `/opt/<name>`: MacPorts (decades), Homebrew's
+official MDM-oriented `.pkg` → `/opt/homebrew`, and the enterprise agents
+(Chef, Puppet, osquery) whose CLI+daemon lifecycle matches ours exactly.
+
+```
+/opt/nix/bin/                nix + legacy nix-* (PATH via /etc/paths.d/nix)
+/opt/nix/libexec/<h>/        per-helper subtrees, deliberately OFF PATH:
+                             git/ (bin, libexec/git-core, share/git-core),
+                             openssh/bin/ssh, lsof/bin/lsof, bash/bin/bash
+/opt/nix/share/man/          man pages (when doc-gen lands)
+/opt/nix/Library/LaunchDaemons/  the meson-installed nix-daemon plist
+                             (@bindir@-parameterized — fills upstream's TODO)
+/Library/LaunchDaemons/      plists as INSTALLED (copied by the installer)
+/etc/nix/, /etc/paths.d/nix  config + PATH (sysconfdir=/etc)
+/nix, /var/db/nix            store volume; install ledger
+```
+
+Consequences, all locked together:
+
+- **Prefixes are baked at build time** (git's exec-path, `NIX_BIN_DIR`,
+  the §7 meson-option values), so nix and the helpers configure with the
+  final `/opt/nix/...` prefixes and install into staging via `DESTDIR`.
+  nix additionally builds with `-Dsysconfdir=/etc`
+  `-Dlocalstatedir=/nix/var` (upstream's packaging values).
+- **One build flavor.** Never a separate "test flavor": what ships is
+  what's tested.
+- **Testing strategy — populate, don't defer**: the build runner
+  assembles the payload at the real `/opt/nix` (one sudo copy) *before*
+  the test ladder runs. The suite keeps its green uninterrupted, and
+  gains fidelity: helper resolution moves from PATH-fronting to the baked
+  absolute paths users actually get. Once the `.pkg` exists, the
+  clean-runner matrix additionally installs it and re-runs the functional
+  suite post-install — the Milestone-2 exit gate (and most of
+  Milestone 3's GitHub Action).
+- The daemon plist waits on `@bindir@/nix-daemon`; for `/opt/nix` that
+  path exists pre-mount, so daemon startup may race the darwin-store
+  mount (KeepAlive converges; the installer may inject a store-dir
+  wait4path when authoring the installed plist — noted for §11.2 #13).
+
 ### 11.3 Code layout (information architecture)
 
 Each piece lives according to **where it is going**:
