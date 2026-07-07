@@ -27,5 +27,6 @@
   "aws-c-sdkutils",
   "aws-c-cal",
   "ngtcp2",
-  "boost"
+  "boost",
+  "libxml2"
 ]
