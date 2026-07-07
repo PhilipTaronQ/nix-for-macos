@@ -2,5 +2,6 @@
   "zlib",
   "xz",
   "bzip2",
-  "zstd"
+  "zstd",
+  "lzo"
 ]
