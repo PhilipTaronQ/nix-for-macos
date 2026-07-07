@@ -16,12 +16,14 @@ final class LedgerTests: XCTestCase {
         try? FileManager.default.removeItem(at: root)
     }
 
+    private let miniPlan: [Action] = [.syntheticConf(SyntheticConf())]
+
     private func engine() -> Engine {
         Engine(store: LedgerStore(root: root), ctx: Context(root: root))
     }
 
     func testInstallWritesLedgerAndAppliesActions() throws {
-        try engine().install(plan: defaultPlan())
+        try engine().install(plan: miniPlan)
 
         let conf = root.appendingPathComponent("etc/synthetic.conf")
         let text = try String(contentsOf: conf, encoding: .utf8)
@@ -34,8 +36,8 @@ final class LedgerTests: XCTestCase {
     }
 
     func testReinstallIsIdempotent() throws {
-        try engine().install(plan: defaultPlan())
-        try engine().install(plan: defaultPlan()) // resumes; nothing to do
+        try engine().install(plan: miniPlan)
+        try engine().install(plan: miniPlan) // resumes; nothing to do
 
         let conf = root.appendingPathComponent("etc/synthetic.conf")
         let text = try String(contentsOf: conf, encoding: .utf8)
@@ -51,7 +53,7 @@ final class LedgerTests: XCTestCase {
             at: conf.deletingLastPathComponent(), withIntermediateDirectories: true)
         try "nix\n".write(to: conf, atomically: true, encoding: .utf8)
 
-        try engine().install(plan: defaultPlan())
+        try engine().install(plan: miniPlan)
         var ledger = try LedgerStore(root: root).load()
         XCTAssertEqual(ledger.actions[0].state, .skipped)
 
@@ -63,7 +65,7 @@ final class LedgerTests: XCTestCase {
     }
 
     func testUninstallRevertsInReverseAndRemovesLedger() throws {
-        try engine().install(plan: defaultPlan())
+        try engine().install(plan: miniPlan)
         try engine().uninstall()
 
         let conf = root.appendingPathComponent("etc/synthetic.conf")
@@ -88,7 +90,7 @@ final class LedgerTests: XCTestCase {
         try #"{"version": 1, "actions": [], "planner": "macos"}"#
             .write(to: store.fileURL, atomically: true, encoding: .utf8)
 
-        XCTAssertThrowsError(try engine().install(plan: defaultPlan())) { error in
+        XCTAssertThrowsError(try engine().install(plan: miniPlan)) { error in
             guard case LedgerError.foreignLedger = error else {
                 return XCTFail("expected foreignLedger, got \(error)")
             }
@@ -117,7 +119,7 @@ final class LedgerTests: XCTestCase {
 
     func testLedgerRoundTripsThroughJSON() throws {
         let store = LedgerStore(root: root)
-        var ledger = Ledger(plan: defaultPlan())
+        var ledger = Ledger(plan: miniPlan)
         ledger.actions[0].state = .completed
         try store.save(ledger)
 
@@ -131,9 +133,10 @@ final class LedgerTests: XCTestCase {
         var ctx = Context(root: root)
         ctx.dryRun = true
         let engine = Engine(store: LedgerStore(root: root), ctx: ctx)
-        try engine.install(plan: defaultPlan())
+        try engine.install(plan: miniPlan)
 
         let conf = root.appendingPathComponent("etc/synthetic.conf")
         XCTAssertFalse(FileManager.default.fileExists(atPath: conf.path))
+        XCTAssertFalse(LedgerStore(root: root).exists, "dry-run writes nothing")
     }
 }

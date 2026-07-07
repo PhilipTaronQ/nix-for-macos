@@ -151,6 +151,12 @@ struct Engine {
     var store: LedgerStore
     var ctx: Context
 
+    private func saveUnlessDry(_ ledger: Ledger) throws {
+        if !ctx.dryRun {
+            try store.save(ledger)
+        }
+    }
+
     /// Forward, fail-fast, persist-always. Re-running resumes: entries that
     /// are already `completed`/`skipped` are left alone.
     func install(plan: [Action]) throws {
@@ -160,7 +166,7 @@ struct Engine {
                 ledger = try store.load() // throws on foreign ledgers
             } else {
                 ledger = Ledger(plan: plan)
-                try store.save(ledger)
+                try saveUnlessDry(ledger)
             }
             for i in ledger.actions.indices {
                 let entry = ledger.actions[i]
@@ -171,19 +177,23 @@ struct Engine {
                 if try entry.action.isAlreadyDone(ctx) {
                     ctx.log("skipped (already true): \(entry.action.summary)")
                     ledger.actions[i].state = .skipped
-                    try store.save(ledger)
+                    try saveUnlessDry(ledger)
                     continue
                 }
                 ctx.log("applying: \(entry.action.summary)")
                 do {
                     if !ctx.dryRun {
-                        try entry.action.apply(ctx)
+                        var action = entry.action
+                        try action.apply(ctx)
+                        // Actions capture discovered state (disk, UUID) in
+                        // apply; the ledger must record it for revert.
+                        ledger.actions[i].action = action
                     }
                     ledger.actions[i].state = .completed
-                    try store.save(ledger)
+                    try saveUnlessDry(ledger)
                 } catch {
                     // Persist how far we got; the ledger stays replayable.
-                    try? store.save(ledger)
+                    try? saveUnlessDry(ledger)
                     throw error
                 }
             }
@@ -209,10 +219,10 @@ struct Engine {
                         try entry.action.revert(ctx)
                     }
                     ledger.actions[i].state = .uncompleted
-                    try store.save(ledger)
+                    try saveUnlessDry(ledger)
                 } catch {
                     failures.append("\(entry.action.summary): \(error)")
-                    try? store.save(ledger)
+                    try? saveUnlessDry(ledger)
                 }
             }
             if failures.isEmpty {
