@@ -38,5 +38,6 @@
   "aws-c-auth",
   "aws-c-mqtt",
   "curl",
-  "aws-c-s3"
+  "aws-c-s3",
+  "aws-crt-cpp"
 ]
