@@ -11,5 +11,6 @@
   "nlohmann_json",
   "editline",
   "libev",
-  "libblake3"
+  "libblake3",
+  "aws-c-common"
 ]
