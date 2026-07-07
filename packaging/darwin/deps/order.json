@@ -43,5 +43,6 @@
   "ncurses",
   "readline",
   "bashInteractive",
-  "lsof"
+  "lsof",
+  "openssh"
 ]
