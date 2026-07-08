@@ -2,8 +2,10 @@ name: macos-build
 
 # Build the store-free nix + the helper executables (git, ssh, lsof, bash)
 # against the staging prefix, run the full test ladder, gate on the
-# dynamic-link allowlist, and verify the artifact on CLEAN runners
-# (no Nix installed, /nix absent) across the deployment-target range.
+# dynamic-link allowlist, and verify on CLEAN runners (no Nix installed,
+# /nix absent) across the deployment-target range — both the raw /opt/nix
+# tree and the installer .pkg, whose lifecycle (install → daemon → real
+# build → uninstall) is proven end to end.
 #
 # This workflow is the artifact producer. The staging-v1-* cache namespace
 # is shared with any dev-loop workflow that builds the same staging tree.
@@ -135,6 +137,31 @@ jobs:
           path: nix-macos-standalone.tar
           if-no-files-found: error
 
+      # The engine's own suite runs here with the real toolchain (the
+      # Linux-side runs exercise it under swift-corelibs only).
+      - name: Installer engine — swift test + release build
+        run: |
+          cd packaging/darwin
+          swift test
+          swift build -c release
+
+      - name: Assemble the .pkg
+        run: |
+          VERSION="$(cat .version)-ci.${GITHUB_SHA:0:7}"
+          BIN=$(cd packaging/darwin && swift build -c release --show-bin-path)/nix-install
+          bash packaging/darwin/pkg/build-pkg.sh /opt/nix "$BIN" "$VERSION" \
+            "nix-$VERSION-aarch64-darwin.pkg"
+          shasum -a 256 nix-*.pkg > checksums.txt
+          cat checksums.txt
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pkg-${{ github.sha }}
+          path: |
+            nix-*.pkg
+            checksums.txt
+          if-no-files-found: error
+
       - name: Save staging cache
         if: always()
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -186,3 +213,57 @@ jobs:
           /opt/nix/libexec/bash/bin/bash --version | head -1
           /opt/nix/libexec/openssh/bin/ssh -V
           echo "verify-clean passed on ${{ matrix.runner }}"
+
+  # The pkg-level lifecycle, on clean runners of every supported generation:
+  # install → daemon → REAL BUILD via the build users → substitution from
+  # cache.nixos.org (the whole trust/curl/compression stack) → man pages →
+  # ledger-backed uninstall, forensically checked.
+  verify-pkg:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-14, macos-15, macos-26]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      # For flake.lock only (the substitution smoke pins its nixpkgs);
+      # the workspace does not pollute the clean-runner claim.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: pkg-${{ github.sha }}
+
+      - name: Full lifecycle on a clean runner
+        run: |
+          test ! -e /nix && test ! -e /opt/nix && echo "pristine"
+          shasum -a 256 -c checksums.txt
+          sudo installer -pkg nix-*.pkg -target /
+          N=/opt/nix/bin/nix
+          "$N" --version
+          echo "=== daemon build via _nixbld users ==="
+          OUT=$("$N" --extra-experimental-features nix-command build --no-link \
+            --print-out-paths --expr "
+              derivation { name = \"pkg-smoke\"; system = \"aarch64-darwin\";
+                builder = \"/opt/nix/libexec/bash/bin/bash\";
+                args = [ \"-c\" \"echo verified > \$out\" ]; }")
+          cat "$OUT"
+          echo "=== substitution from cache.nixos.org (a real project) ==="
+          PIN=$(jq -r '.nodes.nixpkgs.locked.rev' flake.lock)
+          "$N" --extra-experimental-features "nix-command flakes" build --no-link \
+            --max-jobs 0 "github:NixOS/nixpkgs/$PIN#hello"
+          "$N" --extra-experimental-features "nix-command flakes" shell \
+            "github:NixOS/nixpkgs/$PIN#hello" -c hello
+          echo "=== man pages ==="
+          man -w nix-store && man 5 nix.conf | head -3
+          echo "=== ledger uninstall, forensic check ==="
+          sudo /opt/nix/libexec/nix-install uninstall
+          for p in /opt/nix /etc/nix /etc/paths.d/nix /etc/manpaths.d/nix \
+                   /Library/LaunchDaemons/org.nixos.nix-daemon.plist \
+                   /etc/newsyslog.d/org.nixos.nix-daemon.conf; do
+            test ! -e "$p" || { echo "REMAINS: $p"; exit 1; }
+          done
+          dscl . -read /Groups/nixbld >/dev/null 2>&1 && exit 1 || true
+          diskutil info Nix >/dev/null 2>&1 && exit 1 || echo "forensically clean"
+          echo "verify-pkg passed on ${{ matrix.runner }}"
