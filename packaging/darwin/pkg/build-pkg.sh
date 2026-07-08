@@ -45,6 +45,26 @@ pkgbuild \
     --scripts "$work/scripts" \
     "$work/nix-component.pkg"
 
+# Optional config fragments: each is a real nix.conf snippet shipped under
+# /opt/nix/etc/includes, packaged as its own Distribution choice. Installed
+# only if the user selects the choice; nix-install then wires whichever are
+# present into /etc/nix/nix.conf via !include (recorded in the ledger, removed
+# on uninstall). Ordered before the core package so the fragment exists when
+# `nix-install install` runs.
+fragment_pkg() {  # <name> <identifier> <conf line>
+    local tree="$work/frag-$1"
+    mkdir -p "$tree/opt/nix/etc/includes"
+    printf '%s\n' "$3" > "$tree/opt/nix/etc/includes/$1.conf"
+    pkgbuild \
+        --root "$tree" \
+        --identifier "$2" \
+        --version "$version" \
+        --install-location / \
+        "$work/nix-$1.pkg"
+}
+fragment_pkg flakes  org.nixos.nix.flakes  "experimental-features = nix-command flakes"
+fragment_pkg sandbox org.nixos.nix.sandbox "sandbox = true"
+
 sed "s/@VERSION@/$version/g" "$here/Distribution.xml" > "$work/Distribution.xml"
 
 productbuild \

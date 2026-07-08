@@ -242,6 +242,26 @@ jobs:
           sudo installer -pkg nix-*.pkg -target /
           N=/opt/nix/bin/nix
           "$N" --version
+          echo "=== default install manages nothing (no fragments wired) ==="
+          # A stock install writes no managed config: the root daemon defaults
+          # build-users-group to nixbld and macOS ships sandbox off, and no
+          # optional fragment (flakes, sandbox) was selected — so nix.conf, if
+          # present at all, carries none of our !include lines.
+          if [ -e /etc/nix/nix.conf ] && grep -q '/opt/nix/etc/includes' /etc/nix/nix.conf; then
+            echo "FAIL: default install wired an optional fragment"
+            cat /etc/nix/nix.conf; exit 1
+          fi
+          echo "=== effective nix config on this runner (root/daemon view) ==="
+          # The full resolved config: compiled defaults (macOS ships sandbox
+          # OFF; build-users-group defaults to nixbld as root) plus whatever
+          # fragments were wired into nix.conf. Dumped for audit — the
+          # nix-command in experimental-features is just the flag we pass to
+          # run config show.
+          sudo "$N" --extra-experimental-features nix-command config show \
+            | tee /tmp/nix-config.txt
+          echo "--- macOS-relevant settings ---"
+          grep -E '^(sandbox|sandbox-fallback|build-users-group|trusted-users|experimental-features) =' \
+            /tmp/nix-config.txt || true
           echo "=== daemon build via _nixbld users ==="
           OUT=$("$N" --extra-experimental-features nix-command build --no-link \
             --print-out-paths --expr "

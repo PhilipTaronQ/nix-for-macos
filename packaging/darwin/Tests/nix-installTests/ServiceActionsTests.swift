@@ -189,30 +189,64 @@ final class ServiceActionsTests: XCTestCase {
 
     // MARK: NixConf
 
-    func testNixConfWritesBothFilesAndRefusesForeign() throws {
-        try NixConf().apply(ctx)
-        XCTAssertEqual(
-            try String(contentsOf: ctx.path("/etc/nix/nix.conf"), encoding: .utf8),
-            "!include nix.install.conf\n")
-        XCTAssertTrue(
-            try String(contentsOf: ctx.path("/etc/nix/nix.install.conf"), encoding: .utf8)
-                .contains("experimental-features = nix-command flakes"))
+    func testNixConfNoFragmentsManagesNothing() throws {
+        var conf = NixConf()
+        try conf.apply(ctx)
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: ctx.path("/etc/nix/nix.conf").path),
+            "a stock install with no selected fragments writes no config")
+        XCTAssertTrue(conf.addedIncludes.isEmpty)
+    }
 
-        // Foreign nix.conf ⇒ refuse (prior-install posture).
-        try write("substituters = https://example.org\n", "/etc/nix/nix.conf")
-        XCTAssertThrowsError(try NixConf().apply(ctx))
+    func testNixConfWiresPresentFragmentsAndRecordsThem() throws {
+        try write(
+            "experimental-features = nix-command flakes\n", "/opt/nix/etc/includes/flakes.conf")
+        try write("sandbox = true\n", "/opt/nix/etc/includes/sandbox.conf")
+        var conf = NixConf()
+        try conf.apply(ctx)
+
+        let text = try String(contentsOf: ctx.path("/etc/nix/nix.conf"), encoding: .utf8)
+        XCTAssertTrue(text.contains("!include /opt/nix/etc/includes/flakes.conf"))
+        XCTAssertTrue(text.contains("!include /opt/nix/etc/includes/sandbox.conf"))
+        XCTAssertEqual(conf.addedIncludes.count, 2, "both !include lines recorded in the ledger")
+    }
+
+    func testNixConfCoexistsWithExistingUserConf() throws {
+        try write("max-jobs = 4\n", "/etc/nix/nix.conf")
+        try write("sandbox = true\n", "/opt/nix/etc/includes/sandbox.conf")
+        var conf = NixConf()
+        try conf.apply(ctx)
+
+        let text = try String(contentsOf: ctx.path("/etc/nix/nix.conf"), encoding: .utf8)
+        XCTAssertTrue(text.contains("max-jobs = 4"), "user content is preserved")
+        let include = text.range(of: "!include /opt/nix/etc/includes/sandbox.conf")!
+        let userLine = text.range(of: "max-jobs = 4")!
+        XCTAssertTrue(
+            include.lowerBound < userLine.lowerBound,
+            "includes go above user settings, so a user's own edits below win")
+    }
+
+    func testNixConfRevertRemovesOnlyOursAndDeletesIfEmpty() throws {
+        try write(
+            "experimental-features = nix-command flakes\n", "/opt/nix/etc/includes/flakes.conf")
+        var conf = NixConf()
+        try conf.apply(ctx)
+        try conf.revert(ctx)
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: ctx.path("/etc/nix/nix.conf").path),
+            "nix.conf held only our !include, so it is removed")
     }
 
     func testNixConfRevertPreservesUserEditedConf() throws {
-        try NixConf().apply(ctx)
-        try write("!include nix.install.conf\nsandbox = relaxed\n", "/etc/nix/nix.conf")
+        try write("max-jobs = 4\n", "/etc/nix/nix.conf")
+        try write("sandbox = true\n", "/opt/nix/etc/includes/sandbox.conf")
+        var conf = NixConf()
+        try conf.apply(ctx)
 
-        try NixConf().revert(ctx)
-        XCTAssertFalse(
-            FileManager.default.fileExists(atPath: ctx.path("/etc/nix/nix.install.conf").path))
-        XCTAssertTrue(
-            FileManager.default.fileExists(atPath: ctx.path("/etc/nix/nix.conf").path),
-            "user-edited nix.conf survives uninstall")
+        try conf.revert(ctx)
+        let text = try String(contentsOf: ctx.path("/etc/nix/nix.conf"), encoding: .utf8)
+        XCTAssertTrue(text.contains("max-jobs = 4"), "user setting survives uninstall")
+        XCTAssertFalse(text.contains("!include"), "our line is gone")
     }
 
     // MARK: ShellInit

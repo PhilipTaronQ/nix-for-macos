@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <installer-gui-script minSpecVersion="2">
     <title>Nix</title>
-    <options customize="never" require-scripts="true" rootVolumeOnly="true"/>
+    <options customize="always" require-scripts="true" rootVolumeOnly="true"/>
     <volume-check>
         <allowed-os-versions>
             <os-version min="14.0"/>
@@ -10,12 +10,31 @@
     <options hostArchitectures="arm64"/>
     <choices-outline>
         <line choice="default">
+            <!-- fragment choices ordered first: their .conf files must exist
+                 under /opt/nix before the core package's postinstall runs
+                 nix-install, which wires present fragments into nix.conf -->
+            <line choice="org.nixos.nix.flakes"/>
+            <line choice="org.nixos.nix.sandbox"/>
             <line choice="org.nixos.nix"/>
         </line>
     </choices-outline>
-    <choice id="default"/>
+    <choice id="default" title="Nix"/>
     <choice id="org.nixos.nix" visible="false">
         <pkg-ref id="org.nixos.nix"/>
     </choice>
+    <choice id="org.nixos.nix.flakes"
+            title="Enable Flakes and nix-command"
+            description="Turn on the experimental nix-command and flakes features. Off by default (stock Nix); you can enable them later by editing /etc/nix/nix.conf."
+            start_selected="false">
+        <pkg-ref id="org.nixos.nix.flakes"/>
+    </choice>
+    <choice id="org.nixos.nix.sandbox"
+            title="Enable the build sandbox"
+            description="Isolate builds from the host filesystem and network. Off by default on macOS; a few Darwin derivations may need adjustment. You can change this later by editing /etc/nix/nix.conf."
+            start_selected="false">
+        <pkg-ref id="org.nixos.nix.sandbox"/>
+    </choice>
     <pkg-ref id="org.nixos.nix" version="@VERSION@" onConclusion="none">nix-component.pkg</pkg-ref>
+    <pkg-ref id="org.nixos.nix.flakes" version="@VERSION@" onConclusion="none">nix-flakes.pkg</pkg-ref>
+    <pkg-ref id="org.nixos.nix.sandbox" version="@VERSION@" onConclusion="none">nix-sandbox.pkg</pkg-ref>
 </installer-gui-script>

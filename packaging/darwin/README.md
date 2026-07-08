@@ -35,7 +35,7 @@ the package's postinstall runs `install` for you. To drive it by hand:
 
 ```
 swift test                                        # the engine, against scratch roots
-sudo /opt/nix/libexec/nix-install install         # apply the plan (root, real /)
+sudo /opt/nix/libexec/nix-install install         # apply the plan (stock Nix, real /)
 sudo /opt/nix/libexec/nix-install uninstall       # soft: keep the store volume
 sudo /opt/nix/libexec/nix-install uninstall --purge  # full teardown: destroy the store
 sudo /opt/nix/libexec/nix-install repair          # re-apply drifted repairable actions
