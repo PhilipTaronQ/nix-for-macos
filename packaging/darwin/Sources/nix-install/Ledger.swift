@@ -222,6 +222,10 @@ struct Engine {
                     var action = ledger.actions[i].action
                     try action.apply(ctx)
                     ledger.actions[i].action = action
+                    // It did real work now (e.g. NixConf, which may have been
+                    // skipped at first install, just wired a fragment) — mark
+                    // it completed so uninstall reverts it.
+                    ledger.actions[i].state = .completed
                     try saveUnlessDry(ledger)
                 }
             }

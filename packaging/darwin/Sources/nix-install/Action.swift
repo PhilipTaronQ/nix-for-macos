@@ -165,9 +165,7 @@ enum Action: Codable {
         case .buildUsers(let a): try a.apply(ctx)
         case .tmutilExclusions(let a): try a.apply(ctx)
         case .payload(let a): try a.apply(ctx)
-        case .nixConf(var a):
-            try a.apply(ctx)
-            self = .nixConf(a)
+        case .nixConf(let a): try a.apply(ctx)
         case .pathsD(let a): try a.apply(ctx)
         case .manPathsD(let a): try a.apply(ctx)
         case .shellInit(let a): try a.apply(ctx)

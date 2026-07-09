@@ -277,19 +277,42 @@ jobs:
             "github:NixOS/nixpkgs/$PIN#hello" -c hello
           echo "=== man pages ==="
           man -w nix-store && man 5 nix.conf | head -3
-          echo "=== upgrade: reinstall over the existing install ==="
-          # The org.nixos.nix receipt from the first install is the upgrade
-          # key. A second install must detect it and restart the daemon onto
-          # the (re-laid) binary — proving the receipt is readable during the
-          # postinstall, and the pkgutil-keyed upgrade pass fires.
+          echo "=== upgrade + reconfigure: reinstall selecting Flakes ==="
+          # The org.nixos.nix receipt is the upgrade key: a second install must
+          # detect it (so the receipt is readable during postinstall) and
+          # restart the daemon onto the re-laid binary. Selecting Flakes also
+          # exercises reconcile-add: the fragment is staged, moved into place,
+          # and wired.
           pid() { launchctl print system/org.nixos.nix-daemon 2>/dev/null \
             | awk '/^[[:space:]]*pid =/{print $3; exit}'; }
           before=$(pid)
-          sudo installer -pkg nix-*.pkg -target /
+          printf '%s\n' \
+            '<?xml version="1.0" encoding="UTF-8"?>' \
+            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+            '<plist version="1.0"><array><dict>' \
+            '<key>choiceIdentifier</key><string>org.nixos.nix.flakes</string>' \
+            '<key>choiceAttribute</key><string>selected</string>' \
+            '<key>attributeSetting</key><integer>1</integer>' \
+            '</dict></array></plist>' > "$RUNNER_TEMP/flakes-on.xml"
+          sudo installer -pkg nix-*.pkg -applyChoiceChangesXML "$RUNNER_TEMP/flakes-on.xml" -target /
           after=$(pid)
           echo "nix-daemon pid: ${before:-none} -> ${after:-none}"
           test -n "$after" && test "$before" != "$after" \
             || { echo "FAIL: daemon not restarted on upgrade"; exit 1; }
+          grep -q '!include /opt/nix/etc/includes/flakes.conf' /etc/nix/nix.conf \
+            || { echo "FAIL: flakes not wired on reinstall"; cat /etc/nix/nix.conf; exit 1; }
+          test -e /opt/nix/etc/includes/flakes.conf \
+            && test ! -e /opt/nix/etc/includes.install/flakes.conf \
+            || { echo "FAIL: staged fragment not moved into place"; exit 1; }
+          echo "flakes enabled on reinstall; daemon restarted"
+          echo "=== reconfigure: reinstall with Flakes deselected drops it ==="
+          sudo installer -pkg nix-*.pkg -target /
+          test ! -e /opt/nix/etc/includes/flakes.conf \
+            || { echo "FAIL: deselected fragment not removed"; cat /etc/nix/nix.conf; exit 1; }
+          if [ -e /etc/nix/nix.conf ] && grep -q '/opt/nix/etc/includes' /etc/nix/nix.conf; then
+            echo "FAIL: stale include remains after reconcile"; cat /etc/nix/nix.conf; exit 1
+          fi
+          echo "flakes disabled on reconcile"
           "$N" --version
           echo "=== ledger uninstall (--purge: full teardown), forensic check ==="
           sudo /opt/nix/libexec/nix-install uninstall --purge

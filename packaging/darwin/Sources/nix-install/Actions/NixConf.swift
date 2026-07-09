@@ -6,98 +6,122 @@ import Foundation
 /// `build-users-group` to `nixbld` (globals.cc: `isRootUser() ? "nixbld" :
 /// ""`) and macOS ships `sandbox` off, so stock Nix needs no config file.
 ///
-/// Optional settings ship as real nix.conf fragments under
-/// `/opt/nix/etc/includes/` — each its own installer choice (flakes, the
-/// build sandbox, …), present only if the user selected it. This action
-/// scans that directory and wires every fragment present into
-/// `/etc/nix/nix.conf` with an `!include` line, coexisting with a user's
-/// existing file. The lines it adds are recorded in the ledger, so uninstall
-/// removes exactly those; if nix.conf is left empty, it is deleted. Adding a
-/// future toggle is one more choice package dropping one more fragment — no
-/// code here changes.
+/// Optional settings ship as real nix.conf fragments — each its own installer
+/// choice (flakes, the build sandbox, …). A selected choice's package drops
+/// its `.conf` into a **staging** dir, `/opt/nix/etc/includes.install/`, and
+/// this action **reconciles**: it moves each staged fragment into the live
+/// dir `/opt/nix/etc/includes/` and drops any live fragment that wasn't staged
+/// this run. Because the move empties the staging dir, it's a fresh manifest
+/// of *this install's* selection every time — so a reinstall with a choice
+/// unticked removes it, not just a reinstall that adds one. `nix.conf` is then
+/// reconciled to match: our `!include` lines (which point into the live dir,
+/// so they're self-identifying) are rewritten at the top, above any user
+/// settings so those win. If nothing is left, nix.conf is deleted.
 ///
-/// Wiring a fragment also retires its pkg receipt (`pkgutil --forget`): the
-/// fragment package is only a config carrier, and once its `.conf` is
-/// ledger-managed the receipt is vestigial — leaving it would make a later
-/// install read "Upgrade" and linger in the receipt database.
+/// Deselecting a fragment also retires its pkg receipt (`pkgutil --forget`):
+/// the fragment package is only a config carrier. This can only run on
+/// *removal*, not on wiring — macOS writes a package's receipt at the end of
+/// the install session, after this postinstall, so we can't forget a receipt
+/// the current session just created; but a deselected fragment's receipt is
+/// from a prior session, so forgetting it takes. The rest are swept at
+/// uninstall (Payload.revert).
 struct NixConf: Codable {
     static let includesDir = "/opt/nix/etc/includes"
+    static let includesInstallDir = "/opt/nix/etc/includes.install"
     static let confPath = "/etc/nix/nix.conf"
     static let pkgutil = "/usr/sbin/pkgutil"
-
-    /// The `!include` lines this action added, captured so revert removes
-    /// exactly them — never anything the user wrote.
-    var addedIncludes: [String] = []
 
     var summary: String {
         "/etc/nix/nix.conf (!include lines for selected config fragments)"
     }
 
-    /// The `*.conf` fragments currently shipped under the includes dir (only
-    /// those whose choice was installed), by filename.
-    private func fragmentFiles(_ ctx: Context) -> [String] {
-        let dir = ctx.path(Self.includesDir)
-        return ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [])
+    private func confURL(_ ctx: Context) -> URL { ctx.path(Self.confPath) }
+
+    private func confFiles(_ dir: URL) -> [String] {
+        ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [])
             .filter { $0.hasSuffix(".conf") }
             .sorted()
     }
-
-    /// The `!include` line for every fragment present. Paths are the real
-    /// deployment paths (what nix reads at runtime), independent of any
-    /// test/scratch root.
-    private func wantedIncludes(_ ctx: Context) -> [String] {
-        fragmentFiles(ctx).map { "!include \(Self.includesDir)/\($0)" }
+    private func stagedFiles(_ ctx: Context) -> [String] {
+        confFiles(ctx.path(Self.includesInstallDir))
+    }
+    private func liveFiles(_ ctx: Context) -> [String] {
+        confFiles(ctx.path(Self.includesDir))
     }
 
-    func isAlreadyDone(_ ctx: Context) throws -> Bool {
-        let existing = (try? String(contentsOf: ctx.path(Self.confPath), encoding: .utf8)) ?? ""
-        let present = Set(existing.components(separatedBy: "\n"))
-        return wantedIncludes(ctx).allSatisfy { present.contains($0) }
+    private func includeLine(_ file: String) -> String {
+        "!include \(Self.includesDir)/\(file)"
+    }
+    private func isOurInclude(_ line: String) -> Bool {
+        line.hasPrefix("!include \(Self.includesDir)/")
     }
 
-    mutating func apply(_ ctx: Context) throws {
-        // Each fragment package exists only to deliver its .conf under
-        // /opt/nix; once we wire it below, the config is ours (ledger-
-        // managed), so retire the fragment's pkg receipt. The fragment
-        // packages install before this core postinstall runs us, so their
-        // receipts already exist; the id `org.nixos.nix.<name>` matches the
-        // identifiers in build-pkg.sh. A missing receipt (or a --root/test
-        // run's refusing runner) makes this a harmless no-op.
-        for file in fragmentFiles(ctx) {
+    /// Make the live dir exactly the set staged this run: move staged
+    /// fragments in (the move empties staging), then drop any live fragment
+    /// that wasn't staged.
+    private func reconcileFragments(_ ctx: Context) throws {
+        let fm = FileManager.default
+        let staging = ctx.path(Self.includesInstallDir)
+        let live = ctx.path(Self.includesDir)
+        let staged = stagedFiles(ctx)
+
+        if !staged.isEmpty {
+            try fm.createDirectory(at: live, withIntermediateDirectories: true)
+        }
+        for file in staged {
+            let dst = live.appendingPathComponent(file)
+            if fm.fileExists(atPath: dst.path) { try fm.removeItem(at: dst) }
+            try fm.moveItem(at: staging.appendingPathComponent(file), to: dst)
+        }
+        let stagedSet = Set(staged)
+        for file in liveFiles(ctx) where !stagedSet.contains(file) {
+            try? fm.removeItem(at: live.appendingPathComponent(file))
+            // Its receipt is from a prior session now, so this takes.
             let name = String(file.dropLast(".conf".count))
             _ = try? ctx.runner.run(Self.pkgutil, ["--forget", "org.nixos.nix.\(name)"])
         }
+    }
 
-        let url = ctx.path(Self.confPath)
+    func isAlreadyDone(_ ctx: Context) throws -> Bool {
+        if !stagedFiles(ctx).isEmpty { return false }  // staging pending
+        let wanted = Set(liveFiles(ctx).map(includeLine))
+        let existing = (try? String(contentsOf: confURL(ctx), encoding: .utf8)) ?? ""
+        let ours = Set(existing.components(separatedBy: "\n").filter(isOurInclude))
+        return wanted == ours
+    }
+
+    func apply(_ ctx: Context) throws {
+        try reconcileFragments(ctx)
+
+        // Reconcile nix.conf: drop our (possibly stale) include lines, re-add
+        // the current set at the top so a user's own settings below win.
+        let wanted = liveFiles(ctx).map(includeLine)
+        let url = confURL(ctx)
         let existing = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
         var lines = existing.isEmpty ? [] : existing.components(separatedBy: "\n")
-        // A file ending in "\n" splits to a trailing "" — drop it, restore on write.
         if lines.last == "" { lines.removeLast() }
-
-        let present = Set(lines)
-        let missing = wantedIncludes(ctx).filter { !present.contains($0) }
-        // Idempotent, and a stock install (no fragments) leaves /etc/nix untouched.
-        guard !missing.isEmpty else { return }
-
-        // Includes go at the TOP: nix.conf resolves later assignments over
-        // earlier (configuration.cc applies settings in file order, last wins),
-        // so a user's own settings below our includes take precedence.
-        lines = missing + lines
-        addedIncludes = missing  // record for exact reversal
-        try atomicWrite(lines.joined(separator: "\n") + "\n", to: url)
+        let kept = lines.filter { !isOurInclude($0) }
+        let newLines = wanted + kept
+        if newLines.isEmpty {
+            try? FileManager.default.removeItem(at: url)
+        } else {
+            try atomicWrite(newLines.joined(separator: "\n") + "\n", to: url)
+        }
     }
 
     func revert(_ ctx: Context) throws {
-        let url = ctx.path(Self.confPath)
-        guard let existing = try? String(contentsOf: url, encoding: .utf8) else { return }
-        let ours = Set(addedIncludes)
-        let kept = existing.components(separatedBy: "\n").filter { !ours.contains($0) }
-        let remaining = kept.joined(separator: "\n")
-        if remaining.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            // nix.conf held only our includes — remove it entirely.
-            try? FileManager.default.removeItem(at: url)
-        } else {
-            try atomicWrite(remaining, to: url)
+        let url = confURL(ctx)
+        // nix.conf may already be gone (a reconcile that dropped the last
+        // fragment deletes it), so this is best-effort — but the /etc/nix
+        // cleanup below must still run either way.
+        if let existing = try? String(contentsOf: url, encoding: .utf8) {
+            let kept = existing.components(separatedBy: "\n").filter { !isOurInclude($0) }
+            let remaining = kept.joined(separator: "\n")
+            if remaining.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                try? FileManager.default.removeItem(at: url)
+            } else {
+                try atomicWrite(remaining, to: url)
+            }
         }
         // Remove /etc/nix if we emptied it.
         let dir = ctx.path("/etc/nix")

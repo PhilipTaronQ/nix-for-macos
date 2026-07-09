@@ -190,46 +190,73 @@ final class ServiceActionsTests: XCTestCase {
     // MARK: NixConf
 
     func testNixConfNoFragmentsManagesNothing() throws {
-        var conf = NixConf()
-        try conf.apply(ctx)
+        try NixConf().apply(ctx)
         XCTAssertFalse(
             FileManager.default.fileExists(atPath: ctx.path("/etc/nix/nix.conf").path),
             "a stock install with no selected fragments writes no config")
-        XCTAssertTrue(conf.addedIncludes.isEmpty)
     }
 
-    func testNixConfWiresPresentFragmentsAndRecordsThem() throws {
+    func testNixConfStagesAndWiresSelectedFragments() throws {
         try write(
-            "experimental-features = nix-command flakes\n", "/opt/nix/etc/includes/flakes.conf")
-        try write("sandbox = true\n", "/opt/nix/etc/includes/sandbox.conf")
-        var conf = NixConf()
-        try conf.apply(ctx)
+            "experimental-features = nix-command flakes\n",
+            "/opt/nix/etc/includes.install/flakes.conf")
+        try write("sandbox = true\n", "/opt/nix/etc/includes.install/sandbox.conf")
+        try NixConf().apply(ctx)
 
         let text = try String(contentsOf: ctx.path("/etc/nix/nix.conf"), encoding: .utf8)
         XCTAssertTrue(text.contains("!include /opt/nix/etc/includes/flakes.conf"))
         XCTAssertTrue(text.contains("!include /opt/nix/etc/includes/sandbox.conf"))
-        XCTAssertEqual(conf.addedIncludes.count, 2, "both !include lines recorded in the ledger")
+        // Staged fragments were moved into the live dir; staging is emptied.
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: ctx.path("/opt/nix/etc/includes/flakes.conf").path))
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: ctx.path("/opt/nix/etc/includes.install/flakes.conf").path))
     }
 
-    func testNixConfForgetsFragmentReceiptOnApply() throws {
+    func testNixConfReconcileDropsDeselectedFragmentOnReinstall() throws {
+        // First install: flakes staged ⇒ wired and moved into place.
         try write(
-            "experimental-features = nix-command flakes\n", "/opt/nix/etc/includes/flakes.conf")
+            "experimental-features = nix-command flakes\n",
+            "/opt/nix/etc/includes.install/flakes.conf")
+        try NixConf().apply(ctx)
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: ctx.path("/opt/nix/etc/includes/flakes.conf").path))
+
+        // Reinstall with flakes deselected: nothing staged ⇒ reconcile drops it.
+        try NixConf().apply(ctx)
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: ctx.path("/opt/nix/etc/includes/flakes.conf").path),
+            "a deselected fragment is removed from the live dir")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: ctx.path("/etc/nix/nix.conf").path),
+            "and its include line goes with it — nix.conf is now empty, so removed")
+    }
+
+    func testNixConfForgetsFragmentReceiptOnDeselect() throws {
+        // Install flakes, then reinstall without it: reconcile drops the
+        // fragment and forgets its (now prior-session) receipt. Forgetting
+        // can't happen on wire — macOS writes the receipt after this runs.
+        try write(
+            "experimental-features = nix-command flakes\n",
+            "/opt/nix/etc/includes.install/flakes.conf")
+        try NixConf().apply(ctx)  // flakes now live
+
         let runner = FakeRunner { _ in .ok() }
         ctx.runner = runner
-        var conf = NixConf()
-        try conf.apply(ctx)
+        try NixConf().apply(ctx)  // nothing staged ⇒ reconcile drops + forgets flakes
+
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: ctx.path("/opt/nix/etc/includes/flakes.conf").path))
         XCTAssertTrue(
-            runner.calls.contains {
-                $0.contains("--forget") && $0.contains("org.nixos.nix.flakes")
-            },
-            "wiring a fragment retires its pkg receipt so a reinstall reads Install, not Upgrade")
+            runner.calls.contains { $0 == [NixConf.pkgutil, "--forget", "org.nixos.nix.flakes"] },
+            "deselecting a fragment forgets its prior-session pkg receipt")
     }
 
     func testNixConfCoexistsWithExistingUserConf() throws {
         try write("max-jobs = 4\n", "/etc/nix/nix.conf")
-        try write("sandbox = true\n", "/opt/nix/etc/includes/sandbox.conf")
-        var conf = NixConf()
-        try conf.apply(ctx)
+        try write("sandbox = true\n", "/opt/nix/etc/includes.install/sandbox.conf")
+        try NixConf().apply(ctx)
 
         let text = try String(contentsOf: ctx.path("/etc/nix/nix.conf"), encoding: .utf8)
         XCTAssertTrue(text.contains("max-jobs = 4"), "user content is preserved")
@@ -242,10 +269,10 @@ final class ServiceActionsTests: XCTestCase {
 
     func testNixConfRevertRemovesOnlyOursAndDeletesIfEmpty() throws {
         try write(
-            "experimental-features = nix-command flakes\n", "/opt/nix/etc/includes/flakes.conf")
-        var conf = NixConf()
-        try conf.apply(ctx)
-        try conf.revert(ctx)
+            "experimental-features = nix-command flakes\n",
+            "/opt/nix/etc/includes.install/flakes.conf")
+        try NixConf().apply(ctx)
+        try NixConf().revert(ctx)
         XCTAssertFalse(
             FileManager.default.fileExists(atPath: ctx.path("/etc/nix/nix.conf").path),
             "nix.conf held only our !include, so it is removed")
@@ -253,11 +280,10 @@ final class ServiceActionsTests: XCTestCase {
 
     func testNixConfRevertPreservesUserEditedConf() throws {
         try write("max-jobs = 4\n", "/etc/nix/nix.conf")
-        try write("sandbox = true\n", "/opt/nix/etc/includes/sandbox.conf")
-        var conf = NixConf()
-        try conf.apply(ctx)
+        try write("sandbox = true\n", "/opt/nix/etc/includes.install/sandbox.conf")
+        try NixConf().apply(ctx)
 
-        try conf.revert(ctx)
+        try NixConf().revert(ctx)
         let text = try String(contentsOf: ctx.path("/etc/nix/nix.conf"), encoding: .utf8)
         XCTAssertTrue(text.contains("max-jobs = 4"), "user setting survives uninstall")
         XCTAssertFalse(text.contains("!include"), "our line is gone")
@@ -328,8 +354,11 @@ final class ServiceActionsTests: XCTestCase {
         XCTAssertNoThrow(try Payload().apply(ctx))
     }
 
-    func testPayloadRevertForgetsCoreReceipt() throws {
-        let runner = FakeRunner { _ in .ok() }
+    func testPayloadRevertSweepsOurReceipts() throws {
+        let runner = FakeRunner { call in
+            call.contains("--pkgs=^org\\.nixos\\.nix")
+                ? .ok("org.nixos.nix\norg.nixos.nix.flakes\n") : .ok()
+        }
         ctx.runner = runner
         try FileManager.default.createDirectory(
             at: ctx.path("/opt/nix"), withIntermediateDirectories: true)
@@ -338,8 +367,10 @@ final class ServiceActionsTests: XCTestCase {
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: ctx.path("/opt/nix").path))
         XCTAssertTrue(
-            runner.calls.contains { $0 == [Payload.pkgutil, "--forget", Payload.pkgIdentifier] },
-            "reverting the payload retires the core package receipt")
+            runner.calls.contains { $0 == [Payload.pkgutil, "--forget", "org.nixos.nix"] })
+        XCTAssertTrue(
+            runner.calls.contains { $0 == [Payload.pkgutil, "--forget", "org.nixos.nix.flakes"] },
+            "uninstall sweeps the core receipt and any fragment receipts")
     }
 
     // MARK: DaemonService + SelfHealService

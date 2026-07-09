@@ -148,15 +148,15 @@ final class LedgerTests: XCTestCase {
         // they're already .completed. NixConf is one of them, so its receipt
         // work is observable.
         try FileManager.default.createDirectory(
-            at: root.appendingPathComponent("opt/nix/etc/includes"),
+            at: root.appendingPathComponent("opt/nix/etc/includes.install"),
             withIntermediateDirectories: true)
         try "experimental-features = nix-command flakes\n".write(
-            to: root.appendingPathComponent("opt/nix/etc/includes/flakes.conf"),
+            to: root.appendingPathComponent("opt/nix/etc/includes.install/flakes.conf"),
             atomically: true, encoding: .utf8)
 
         let store = LedgerStore(root: root)
         var ledger = Ledger(plan: [.nixConf(NixConf()), .pathsD(PathsD())])
-        ledger.actions[0].state = .completed
+        ledger.actions[0].state = .skipped  // nothing to wire at first install
         ledger.actions[1].state = .completed
         try store.save(ledger)
 
@@ -168,10 +168,14 @@ final class LedgerTests: XCTestCase {
         XCTAssertTrue(
             runner.calls.contains { $0.contains("--pkg-info") && $0.contains("org.nixos.nix") },
             "install reads the receipt to detect an upgrade")
+        let confText = try String(
+            contentsOf: root.appendingPathComponent("etc/nix/nix.conf"), encoding: .utf8)
         XCTAssertTrue(
-            runner.calls.contains {
-                $0.contains("--forget") && $0.contains("org.nixos.nix.flakes")
-            },
-            "the upgrade pass re-runs NixConf, re-retiring the fragment receipt")
+            confText.contains("!include /opt/nix/etc/includes/flakes.conf"),
+            "the upgrade pass re-runs NixConf, wiring the staged fragment")
+        let after = try LedgerStore(root: root).load()
+        XCTAssertEqual(
+            after.actions[0].state, .completed,
+            "a re-applied action is marked completed so uninstall reverts it (and cleans /etc/nix)")
     }
 }

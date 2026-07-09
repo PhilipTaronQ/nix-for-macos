@@ -63,9 +63,17 @@ struct Payload: Codable {
             // a copy-self-to-tmp dance.
             try FileManager.default.removeItem(at: dest)
         }
-        // The record goes with the thing: the core package delivered this
-        // tree, so retire its receipt. A later install is then a clean
-        // "Install", and the upgrade key won't fire on a fresh reinstall.
-        _ = try? ctx.runner.run(Self.pkgutil, ["--forget", Self.pkgIdentifier])
+        // The record goes with the thing. At uninstall every receipt is from a
+        // prior session, so retire them all — the core package and any fragment
+        // choices (org.nixos.nix, org.nixos.nix.flakes, …). A later install is
+        // then a clean "Install", and the upgrade key won't fire on a fresh
+        // reinstall.
+        if let listed = try? ctx.runner.run(Self.pkgutil, ["--pkgs=^org\\.nixos\\.nix"]),
+            listed.ok
+        {
+            for id in listed.stdoutText.split(whereSeparator: \.isNewline) {
+                _ = try? ctx.runner.run(Self.pkgutil, ["--forget", String(id)])
+            }
+        }
     }
 }
