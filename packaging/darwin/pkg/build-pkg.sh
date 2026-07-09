@@ -67,9 +67,16 @@ fragment_pkg sandbox org.nixos.nix.sandbox "sandbox = true"
 
 sed "s/@VERSION@/$version/g" "$here/Distribution.xml" > "$work/Distribution.xml"
 
+# Installer resources referenced by Distribution.xml: the Nix logomark used
+# as the background (see resources/ATTRIBUTION).
+resources="$work/resources"
+mkdir -p "$resources"
+cp "$here/resources/nix-logo.png" "$resources/nix-logo.png"
+
 productbuild \
     --distribution "$work/Distribution.xml" \
     --package-path "$work" \
+    --resources "$resources" \
     "$out"
 
 echo "built: $out"
