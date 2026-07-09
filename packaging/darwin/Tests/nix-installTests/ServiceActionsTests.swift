@@ -211,6 +211,20 @@ final class ServiceActionsTests: XCTestCase {
         XCTAssertEqual(conf.addedIncludes.count, 2, "both !include lines recorded in the ledger")
     }
 
+    func testNixConfForgetsFragmentReceiptOnApply() throws {
+        try write(
+            "experimental-features = nix-command flakes\n", "/opt/nix/etc/includes/flakes.conf")
+        let runner = FakeRunner { _ in .ok() }
+        ctx.runner = runner
+        var conf = NixConf()
+        try conf.apply(ctx)
+        XCTAssertTrue(
+            runner.calls.contains {
+                $0.contains("--forget") && $0.contains("org.nixos.nix.flakes")
+            },
+            "wiring a fragment retires its pkg receipt so a reinstall reads Install, not Upgrade")
+    }
+
     func testNixConfCoexistsWithExistingUserConf() throws {
         try write("max-jobs = 4\n", "/etc/nix/nix.conf")
         try write("sandbox = true\n", "/opt/nix/etc/includes/sandbox.conf")

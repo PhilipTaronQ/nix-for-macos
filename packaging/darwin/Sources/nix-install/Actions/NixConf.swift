@@ -15,9 +15,15 @@ import Foundation
 /// removes exactly those; if nix.conf is left empty, it is deleted. Adding a
 /// future toggle is one more choice package dropping one more fragment — no
 /// code here changes.
+///
+/// Wiring a fragment also retires its pkg receipt (`pkgutil --forget`): the
+/// fragment package is only a config carrier, and once its `.conf` is
+/// ledger-managed the receipt is vestigial — leaving it would make a later
+/// install read "Upgrade" and linger in the receipt database.
 struct NixConf: Codable {
     static let includesDir = "/opt/nix/etc/includes"
     static let confPath = "/etc/nix/nix.conf"
+    static let pkgutil = "/usr/sbin/pkgutil"
 
     /// The `!include` lines this action added, captured so revert removes
     /// exactly them — never anything the user wrote.
@@ -27,15 +33,20 @@ struct NixConf: Codable {
         "/etc/nix/nix.conf (!include lines for selected config fragments)"
     }
 
-    /// The `!include` line for every fragment currently shipped under the
-    /// includes dir. Paths are the real deployment paths (what nix reads at
-    /// runtime), independent of any test/scratch root.
-    private func wantedIncludes(_ ctx: Context) -> [String] {
+    /// The `*.conf` fragments currently shipped under the includes dir (only
+    /// those whose choice was installed), by filename.
+    private func fragmentFiles(_ ctx: Context) -> [String] {
         let dir = ctx.path(Self.includesDir)
-        let fragments = ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [])
+        return ((try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? [])
             .filter { $0.hasSuffix(".conf") }
             .sorted()
-        return fragments.map { "!include \(Self.includesDir)/\($0)" }
+    }
+
+    /// The `!include` line for every fragment present. Paths are the real
+    /// deployment paths (what nix reads at runtime), independent of any
+    /// test/scratch root.
+    private func wantedIncludes(_ ctx: Context) -> [String] {
+        fragmentFiles(ctx).map { "!include \(Self.includesDir)/\($0)" }
     }
 
     func isAlreadyDone(_ ctx: Context) throws -> Bool {
@@ -45,6 +56,18 @@ struct NixConf: Codable {
     }
 
     mutating func apply(_ ctx: Context) throws {
+        // Each fragment package exists only to deliver its .conf under
+        // /opt/nix; once we wire it below, the config is ours (ledger-
+        // managed), so retire the fragment's pkg receipt. The fragment
+        // packages install before this core postinstall runs us, so their
+        // receipts already exist; the id `org.nixos.nix.<name>` matches the
+        // identifiers in build-pkg.sh. A missing receipt (or a --root/test
+        // run's refusing runner) makes this a harmless no-op.
+        for file in fragmentFiles(ctx) {
+            let name = String(file.dropLast(".conf".count))
+            _ = try? ctx.runner.run(Self.pkgutil, ["--forget", "org.nixos.nix.\(name)"])
+        }
+
         let url = ctx.path(Self.confPath)
         let existing = (try? String(contentsOf: url, encoding: .utf8)) ?? ""
         var lines = existing.isEmpty ? [] : existing.components(separatedBy: "\n")
