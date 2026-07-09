@@ -170,6 +170,11 @@ struct Engine {
     /// are already `completed`/`skipped` are left alone.
     func install(plan: [Action]) throws {
         try store.withLock {
+            // The upgrade key: an `org.nixos.nix` receipt already present means
+            // a prior install completed and we're (re)installing over it. Read
+            // it now, before the resume loop marks anything.
+            let upgrade = priorInstallPresent()
+
             var ledger: Ledger
             if store.exists {
                 ledger = try store.load() // throws on foreign ledgers
@@ -206,7 +211,27 @@ struct Engine {
                     throw error
                 }
             }
+
+            // Upgrade: the payload was just replaced with new binaries. The
+            // resume loop skipped the launchd services (their plists already
+            // exist), so re-apply the upgrade-sensitive actions — chiefly to
+            // restart the daemons onto the new binaries.
+            if upgrade && !ctx.dryRun {
+                for i in ledger.actions.indices where ledger.actions[i].action.rerunOnUpgrade {
+                    ctx.log("upgrading: \(ledger.actions[i].action.summary)")
+                    var action = ledger.actions[i].action
+                    try action.apply(ctx)
+                    ledger.actions[i].action = action
+                    try saveUnlessDry(ledger)
+                }
+            }
         }
+    }
+
+    /// The pkgutil upgrade key: is the core package's receipt already present?
+    /// A missing receipt (or a --root/test refusing runner) reads as false.
+    private func priorInstallPresent() -> Bool {
+        ((try? ctx.runner.run(Payload.pkgutil, ["--pkg-info", Payload.pkgIdentifier]))?.ok) ?? false
     }
 
     /// Reverse, best-effort. By default this is a *soft* uninstall: it

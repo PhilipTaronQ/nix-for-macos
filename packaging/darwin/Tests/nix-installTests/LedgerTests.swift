@@ -141,4 +141,37 @@ final class LedgerTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: conf.path))
         XCTAssertFalse(LedgerStore(root: root).exists, "dry-run writes nothing")
     }
+
+    func testUpgradeReappliesUpgradeSensitiveActions() throws {
+        // A completed ledger + the org.nixos.nix receipt present (the pkgutil
+        // upgrade key) ⇒ the rerunOnUpgrade actions re-apply even though
+        // they're already .completed. NixConf is one of them, so its receipt
+        // work is observable.
+        try FileManager.default.createDirectory(
+            at: root.appendingPathComponent("opt/nix/etc/includes"),
+            withIntermediateDirectories: true)
+        try "experimental-features = nix-command flakes\n".write(
+            to: root.appendingPathComponent("opt/nix/etc/includes/flakes.conf"),
+            atomically: true, encoding: .utf8)
+
+        let store = LedgerStore(root: root)
+        var ledger = Ledger(plan: [.nixConf(NixConf()), .pathsD(PathsD())])
+        ledger.actions[0].state = .completed
+        ledger.actions[1].state = .completed
+        try store.save(ledger)
+
+        var ctx = Context(root: root)
+        let runner = FakeRunner { _ in .ok() }  // pkg-info succeeds ⇒ prior install
+        ctx.runner = runner
+        try Engine(store: store, ctx: ctx).install(plan: [.nixConf(NixConf()), .pathsD(PathsD())])
+
+        XCTAssertTrue(
+            runner.calls.contains { $0.contains("--pkg-info") && $0.contains("org.nixos.nix") },
+            "install reads the receipt to detect an upgrade")
+        XCTAssertTrue(
+            runner.calls.contains {
+                $0.contains("--forget") && $0.contains("org.nixos.nix.flakes")
+            },
+            "the upgrade pass re-runs NixConf, re-retiring the fragment receipt")
+    }
 }

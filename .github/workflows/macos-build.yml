@@ -277,6 +277,20 @@ jobs:
             "github:NixOS/nixpkgs/$PIN#hello" -c hello
           echo "=== man pages ==="
           man -w nix-store && man 5 nix.conf | head -3
+          echo "=== upgrade: reinstall over the existing install ==="
+          # The org.nixos.nix receipt from the first install is the upgrade
+          # key. A second install must detect it and restart the daemon onto
+          # the (re-laid) binary — proving the receipt is readable during the
+          # postinstall, and the pkgutil-keyed upgrade pass fires.
+          pid() { launchctl print system/org.nixos.nix-daemon 2>/dev/null \
+            | awk '/^[[:space:]]*pid =/{print $3; exit}'; }
+          before=$(pid)
+          sudo installer -pkg nix-*.pkg -target /
+          after=$(pid)
+          echo "nix-daemon pid: ${before:-none} -> ${after:-none}"
+          test -n "$after" && test "$before" != "$after" \
+            || { echo "FAIL: daemon not restarted on upgrade"; exit 1; }
+          "$N" --version
           echo "=== ledger uninstall (--purge: full teardown), forensic check ==="
           sudo /opt/nix/libexec/nix-install uninstall --purge
           for p in /opt/nix /etc/nix /etc/paths.d/nix /etc/manpaths.d/nix \
@@ -295,5 +309,11 @@ jobs:
             echo "REMAINS: nix line in /etc/synthetic.conf"; cat /etc/synthetic.conf; exit 1
           fi
           dscl . -read /Groups/nixbld >/dev/null 2>&1 && exit 1 || true
+          # The record goes with the thing: Payload.revert forgets the core
+          # receipt, and fragment receipts were retired at install — so a
+          # purge leaves no org.nixos.nix* receipts behind.
+          if pkgutil --pkgs | grep -q '^org\.nixos\.nix'; then
+            echo "REMAINS: pkg receipts"; pkgutil --pkgs | grep '^org\.nixos\.nix'; exit 1
+          fi
           diskutil info Nix >/dev/null 2>&1 && exit 1 || echo "forensically clean"
           echo "verify-pkg passed on ${{ matrix.runner }}"

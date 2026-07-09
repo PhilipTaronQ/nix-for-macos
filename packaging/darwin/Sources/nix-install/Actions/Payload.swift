@@ -10,6 +10,11 @@ import Foundation
 /// false so uninstall always removes /opt/nix.
 struct Payload: Codable {
     static let destination = "/opt/nix"
+    static let pkgutil = "/usr/sbin/pkgutil"
+    /// The core package's identifier (matches build-pkg.sh). Its receipt is
+    /// the "a Nix install exists here" marker nix-install reads as the
+    /// upgrade key, so reverting the payload retires it here.
+    static let pkgIdentifier = "org.nixos.nix"
 
     /// Optional source tree to copy from (nil = the .pkg already did).
     var source: String?
@@ -58,5 +63,9 @@ struct Payload: Codable {
             // a copy-self-to-tmp dance.
             try FileManager.default.removeItem(at: dest)
         }
+        // The record goes with the thing: the core package delivered this
+        // tree, so retire its receipt. A later install is then a clean
+        // "Install", and the upgrade key won't fire on a fresh reinstall.
+        _ = try? ctx.runner.run(Self.pkgutil, ["--forget", Self.pkgIdentifier])
     }
 }

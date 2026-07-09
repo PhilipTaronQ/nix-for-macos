@@ -112,6 +112,20 @@ enum Action: Codable {
         }
     }
 
+    /// Actions re-applied on an upgrade — a reinstall detected by the
+    /// `org.nixos.nix` receipt already being present. These are the ones that
+    /// must react to replaced binaries: restarting the launchd services picks
+    /// up the new nix-daemon and repair binaries (the plist already exists, so
+    /// the resume loop skips them), and re-running NixConf re-retires any
+    /// fragment receipts the re-selected fragment packages recreated. The
+    /// volume, users, and store are unchanged by an upgrade and stay skipped.
+    var rerunOnUpgrade: Bool {
+        switch self {
+        case .nixConf, .daemonService, .selfHealService: return true
+        default: return false
+        }
+    }
+
     func isAlreadyDone(_ ctx: Context) throws -> Bool {
         switch self {
         case .syntheticConf(let a): return try a.isAlreadyDone(ctx)

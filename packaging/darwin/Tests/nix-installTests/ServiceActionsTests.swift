@@ -328,6 +328,20 @@ final class ServiceActionsTests: XCTestCase {
         XCTAssertNoThrow(try Payload().apply(ctx))
     }
 
+    func testPayloadRevertForgetsCoreReceipt() throws {
+        let runner = FakeRunner { _ in .ok() }
+        ctx.runner = runner
+        try FileManager.default.createDirectory(
+            at: ctx.path("/opt/nix"), withIntermediateDirectories: true)
+
+        try Payload().revert(ctx)
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: ctx.path("/opt/nix").path))
+        XCTAssertTrue(
+            runner.calls.contains { $0 == [Payload.pkgutil, "--forget", Payload.pkgIdentifier] },
+            "reverting the payload retires the core package receipt")
+    }
+
     // MARK: DaemonService + SelfHealService
 
     func testDaemonServiceWritesPlistAndCleansSocket() throws {
